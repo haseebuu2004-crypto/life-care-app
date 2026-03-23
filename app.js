@@ -50,14 +50,13 @@ document.addEventListener('DOMContentLoaded', () => {
        FIREBASE AUTHENTICATION & CLOUD SYNC
     ========================================= */
 
-    // REPLACE WITH YOUR ACTUAL FIREBASE CONFIGURATION
     const firebaseConfig = {
-        apiKey: "AIzaSyDCLqeoE9POePxG64fudEEpyw1LSsvtPAM",
-        authDomain: "lifecare-app-1c0dc.firebaseapp.com",
-        projectId: "lifecare-app-1c0dc",
-        storageBucket: "lifecare-app-1c0dc.firebasestorage.app",
-        messagingSenderId: "876218322438",
-        appId: "1:876218322438:android:5fa78296755d573f5a3d87"
+        apiKey: "AIzaSyAex91wernbEq7uQR0v-kFYJU35_Zpy4AY",
+        authDomain: "life-care-4.firebaseapp.com",
+        projectId: "life-care-4",
+        storageBucket: "life-care-4.firebasestorage.app",
+        messagingSenderId: "440005999465",
+        appId: "1:440005999465:web:95dcd18ec661e9c7769bf8"
     };
 
     const fbApp = initializeApp(firebaseConfig);
