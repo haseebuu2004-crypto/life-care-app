@@ -89,27 +89,33 @@ document.addEventListener('DOMContentLoaded', () => {
         },
     };
 
+    let syncTimeout = null;
+
     async function syncToCloud() {
         if (!currentUserUID || isCloudSyncing) return;
-        try {
-            const dataToSync = {
-                base_products: DB.get('base_products'),
-                product_flavors: DB.get('product_flavors'),
-                sales: DB.get('sales'),
-                attendance: DB.get('attendance'),
-                timestamp: Date.now()
-            };
-            const docRef = doc(db, "users", currentUserUID);
-            // using merge true updates the document safely
-            await setDoc(docRef, { data: dataToSync }, { merge: true });
-        } catch (e) {
-            console.error("Error syncing to cloud. It will sync automatically when online.", e);
-        }
+        
+        if (syncTimeout) clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(async () => {
+            try {
+                const dataToSync = {
+                    base_products: DB.get('base_products'),
+                    product_flavors: DB.get('product_flavors'),
+                    sales: DB.get('sales'),
+                    attendance: DB.get('attendance'),
+                    timestamp: Date.now()
+                };
+                const docRef = doc(db, "users", currentUserUID);
+                await setDoc(docRef, { data: dataToSync }, { merge: true });
+            } catch (e) {
+                console.error("Error syncing to cloud:", e);
+            }
+        }, 1000); // Debounce saves by 1 second to prevent immediate overwrites
     }
 
     function listenToCloud() {
         if (firestoreUnsubscribe) firestoreUnsubscribe();
         const docRef = doc(db, "users", currentUserUID);
+        let firstLoad = true;
         
         firestoreUnsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists() && docSnap.data().data) {
@@ -117,8 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const localTimestamp = parseInt(localStorage.getItem(`lifecare_${currentUserUID}_timestamp`) || "0");
                 const cloudTimestamp = cloudData.timestamp || 0;
 
-                // Sync resolution: cloud timestamp wins if newer
-                if (cloudTimestamp > localTimestamp) {
+                // On first load, ALWAYS pull from cloud regardless of timestamp.
+                // On subsequent updates, only pull if cloud is newer.
+                if (firstLoad || cloudTimestamp > localTimestamp) {
+                    firstLoad = false;
                     isCloudSyncing = true;
                     if (cloudData.base_products) localStorage.setItem(`lifecare_${currentUserUID}_base_products`, JSON.stringify(cloudData.base_products));
                     if (cloudData.product_flavors) localStorage.setItem(`lifecare_${currentUserUID}_product_flavors`, JSON.stringify(cloudData.product_flavors));
@@ -127,7 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem(`lifecare_${currentUserUID}_timestamp`, cloudTimestamp.toString());
                     isCloudSyncing = false;
                     refreshApp();
+                } else {
+                    firstLoad = false;
                 }
+            } else {
+                // No cloud data at all — this is a brand new user on first device.
+                // Don't upload empty data; just let them use the app.
+                firstLoad = false;
             }
         });
     }
@@ -190,15 +204,15 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUserUID = uid;
         loginScreen.style.display = 'none';
         
+        // Start listening to cloud FIRST. The onSnapshot handler will
+        // load cloud data before anything else runs. Only migrate legacy
+        // data if there's something old to bring in.
+        listenToCloud();
+
+        // Run legacy migration only. It checks its own guards.
         migrateLegacyDataOnce();
 
-        // Ensure defaults if blank
-        if (!localStorage.getItem(`lifecare_${currentUserUID}_base_products`)) DB.set('base_products', []);
-        if (!localStorage.getItem(`lifecare_${currentUserUID}_product_flavors`)) DB.set('product_flavors', []);
-        if (!localStorage.getItem(`lifecare_${currentUserUID}_sales`)) DB.set('sales', []);
-        if (!localStorage.getItem(`lifecare_${currentUserUID}_attendance`)) DB.set('attendance', []);
-
-        listenToCloud();
+        // Render the app with whatever local data exists (may be empty on new device).
         refreshApp();
     }
 
@@ -207,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnGoogleLogin.style.display = 'none';
         loginLoading.style.display = 'block';
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         signInWithPopup(auth, provider).catch((error) => {
             console.error("Login Popup Error:", error);
             const errDiv = document.getElementById('login-error');
