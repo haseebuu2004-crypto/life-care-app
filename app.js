@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUserUID = null;
     let isCloudSyncing = false;
     let firestoreUnsubscribe = null;
+    const expandedStockRows = new Set();
 
     const loginScreen = document.getElementById('login-screen');
     const btnGoogleLogin = document.getElementById('btn-google-login');
@@ -512,16 +513,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const pr = document.createElement('tr');
             pr.classList.add('stock-group-header');
             pr.style.cursor = "pointer";
-            // default collapsed style unless searching
-            const iconStr = searchQuery ? "▼" : "▶";
+            pr.id = `stock-base-row-${base.id}`;
+            
+            const isExpanded = expandedStockRows.has(base.id);
+            // default collapsed style unless searching or previously expanded
+            const iconStr = (searchQuery || isExpanded) ? "▼" : "▶";
 
             pr.innerHTML = `
                 <td style="font-weight:bold;">${iconStr} ${base.name}</td>
-                <td class="text-right"><strong>${displayQty}</strong></td>
+                <td class="text-right"><strong id="stock-base-qty-${base.id}">${displayQty}</strong></td>
                 <td class="text-right">-</td>
-                <td class="text-right"><strong>${parentVP.toFixed(2)}</strong></td>
+                <td class="text-right"><strong id="stock-base-vp-${base.id}">${parentVP.toFixed(2)}</strong></td>
                 <td class="text-right">-</td>
-                <td class="text-right"><strong>₹${parentVal.toFixed(2)}</strong></td>
+                <td class="text-right"><strong id="stock-base-val-${base.id}">₹${parentVal.toFixed(2)}</strong></td>
                 <td style="text-align: center;">
                     <button class="icon-btn delete-btn" data-type="base" data-id="${base.id}" style="color: var(--alert-color); font-size: 16px; margin: 0; padding: 4px; width: 32px;" title="Delete All">🗑</button>
                 </td>
@@ -532,19 +536,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const tr = document.createElement('tr');
                 tr.classList.add('stock-group-item');
                 tr.setAttribute('data-parent', base.id);
+                tr.id = `stock-flavor-row-${f.id}`;
                 if (f.qty < 5) tr.style.backgroundColor = "rgba(231, 76, 60, 0.1)";
-                if (!searchQuery) tr.style.display = 'none';
+                if (!searchQuery && !isExpanded) tr.style.display = 'none';
 
                 const flavDisplay = f.flavor ? f.flavor : "Base";
                 tr.innerHTML = `
                     <td style="padding-left: 28px;">↳ ${flavDisplay}</td>
                     <td class="text-right">
-                        <input type="number" value="${f.qty}" class="qty-edit" data-id="${f.id}" data-base="${base.id}" style="width:70px; padding:4px; font-size:14px; text-align:right;">
+                        <input type="number" value="${f.qty}" class="qty-edit" data-id="${f.id}" data-base="${base.id}" id="stock-flavor-qty-inp-${f.id}" style="width:70px; padding:4px; font-size:14px; text-align:right;">
                     </td>
                     <td class="text-right">${Number(f.vp).toFixed(2)}</td>
-                    <td class="text-right">${(f.vp * f.qty).toFixed(2)}</td>
+                    <td class="text-right" id="stock-flavor-vp-${f.id}">${(f.vp * f.qty).toFixed(2)}</td>
                     <td class="text-right">₹${Number(f.sp).toFixed(2)}</td>
-                    <td class="text-right">₹${(f.sp * f.qty).toFixed(2)}</td>
+                    <td class="text-right" id="stock-flavor-val-${f.id}">₹${(f.sp * f.qty).toFixed(2)}</td>
                     <td style="text-align: center;">
                         <button class="icon-btn delete-btn" data-type="flavor" data-id="${f.id}" data-base="${base.id}" style="color: var(--alert-color); font-size: 16px; margin: 0; padding: 4px; width: 32px;" title="Delete Flavour">🗑</button>
                     </td>
@@ -554,11 +559,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             pr.addEventListener('click', (e) => {
                 if (e.target.closest('.delete-btn') || e.target.tagName === 'INPUT') return;
+                
+                const isCurrentlyExpanded = expandedStockRows.has(base.id);
+                if (isCurrentlyExpanded) {
+                    expandedStockRows.delete(base.id);
+                } else {
+                    expandedStockRows.add(base.id);
+                }
+                
                 const td = pr.querySelector('td');
-                const isCollapsed = td.innerHTML.includes('▶');
-                td.innerHTML = isCollapsed ? `▼ ${base.name}` : `▶ ${base.name}`;
+                td.innerHTML = !isCurrentlyExpanded ? `▼ ${base.name}` : `▶ ${base.name}`;
+                
                 document.querySelectorAll(`.stock-group-item[data-parent="${base.id}"]`).forEach(node => {
-                    node.style.display = isCollapsed ? 'table-row' : 'none';
+                    node.style.display = !isCurrentlyExpanded ? 'table-row' : 'none';
                 });
             });
         });
@@ -594,18 +607,48 @@ document.addEventListener('DOMContentLoaded', () => {
             DB.set('product_flavors', flavors);
             DB.set('base_products', bases);
 
-            refreshApp();
-            if (preserveFocus) {
-                setTimeout(() => {
-                    const el = document.querySelector(`.qty-edit[data-id="${fId}"]`);
-                    if (el) {
-                        el.focus();
-                        const val = el.value;
-                        el.value = '';
-                        el.value = val;
-                    }
-                }, 0);
-            }
+            // Update DOM directly to preserve focus and avoid full table re-render
+            const f = flavors[fIdx];
+            const dfVp = document.getElementById(`stock-flavor-vp-${f.id}`);
+            if (dfVp) dfVp.textContent = (f.vp * f.qty).toFixed(2);
+            
+            const dfVal = document.getElementById(`stock-flavor-val-${f.id}`);
+            if (dfVal) dfVal.textContent = `₹${(f.sp * f.qty).toFixed(2)}`;
+
+            // Recalculate and update parent base values
+            const subItems = flavors.filter(fl => fl.productId === bId);
+            let parentVP = 0;
+            let parentVal = 0;
+            let displayQty = 0;
+            subItems.forEach(i => {
+                displayQty += i.qty;
+                parentVP += i.qty * i.vp;
+                parentVal += i.qty * i.sp;
+            });
+
+            const dbQty = document.getElementById(`stock-base-qty-${bId}`);
+            if (dbQty) dbQty.textContent = displayQty;
+            
+            const dbVp = document.getElementById(`stock-base-vp-${bId}`);
+            if (dbVp) dbVp.textContent = parentVP.toFixed(2);
+
+            const dbVal = document.getElementById(`stock-base-val-${bId}`);
+            if (dbVal) dbVal.textContent = `₹${parentVal.toFixed(2)}`;
+
+            // Recalculate totals
+            let totalVPSum = 0;
+            let totalValSum = 0;
+            flavors.forEach(fl => {
+                totalVPSum += fl.qty * fl.vp;
+                totalValSum += fl.qty * fl.sp;
+            });
+            const vpEl = document.getElementById('total-vp-summary');
+            const valEl = document.getElementById('total-val-summary');
+            if (vpEl) vpEl.textContent = totalVPSum.toFixed(2);
+            if (valEl) valEl.textContent = `₹${totalValSum.toFixed(2)}`;
+
+            // Update dashboard silently reflecting the new totals
+            renderDashboard();
         }
     }
 
