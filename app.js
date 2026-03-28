@@ -1175,14 +1175,21 @@ document.addEventListener('DOMContentLoaded', () => {
         records.forEach((r, idx) => {
             const slNo = idx + 1;
             const bgHex = idx % 2 === 0 ? '#ffffff' : '#fcfcfc';
+            
+            // Helper to add 'color: red' to input inline style if value <= 0
+            const f1Style = r.f1 <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
+            const ppStyle = r.pp <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
+            const afreshStyle = r.afresh <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
+            const othersStyle = r.others <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
+
             rowsHTML += `
                 <tr style="background: ${bgHex};">
                     <td style="${tdStyle} font-weight: 500; color: #6c757d; border-left: 1px solid #e9ecef;">${slNo}</td>
                     <td style="${tdStyle} text-align: left; padding-left: 12px; font-weight: 500; min-width: 110px;">${r.date}</td>
-                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="f1" value="${r.f1}"></td>
-                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="pp" value="${r.pp}"></td>
-                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="afresh" value="${r.afresh}"></td>
-                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="others" value="${r.others}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${f1Style}" data-id="${r.id}" data-col="f1" value="${r.f1}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${ppStyle}" data-id="${r.id}" data-col="pp" value="${r.pp}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${afreshStyle}" data-id="${r.id}" data-col="afresh" value="${r.afresh}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${othersStyle}" data-id="${r.id}" data-col="others" value="${r.others}"></td>
                     <td style="${tdStyle}"><input type="number" step="any" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="sp" value="${r.sp}"></td>
                     <td style="${tdStyle}"><input type="text" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="extra1" value="${r.extra1 || ''}"></td>
                     <td style="${tdStyle}"><input type="text" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="extra2" value="${r.extra2 || ''}"></td>
@@ -1191,9 +1198,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         });
 
+        const latest = records[records.length - 1] || {};
+        const summaryText = `Remaining Balance: F1 (<strong style="color:${latest.f1 <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.f1||0}</strong>) | PP (<strong style="color:${latest.pp <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.pp||0}</strong>) | AFRESH (<strong style="color:${latest.afresh <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.afresh||0}</strong>) | OTHERS (<strong style="color:${latest.others <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.others||0}</strong>)`;
+
         container.innerHTML = `
             <div style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 12px; font-size: 18px; color: var(--text-dark);">Usage Register: <span style="color: var(--primary-color);">${customerName}</span></h3>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <h3 style="font-size: 18px; color: var(--text-dark); margin: 0;">Usage Register: <span style="color: var(--primary-color);">${customerName}</span></h3>
+                    <div style="font-size: 14px; color: var(--text-light); background: #fdfdfd; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">${summaryText}</div>
+                </div>
                 <div style="overflow-x: auto; max-height: calc(100vh - 300px); display: block; border-radius: 8px;">
                     <table style="${sheetStyle}">
                         <thead>
