@@ -1084,7 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Auto Reduction Logic for Personal Tracking
         const pt = DB.get('personal_tracking');
-        const personRecords = pt.filter(r => r.personName.toLowerCase() === rName.toLowerCase());
+        const personRecords = pt.filter(r => (r.personName||"").toLowerCase().trim() === rName.toLowerCase().trim());
         personRecords.sort((a,b) => new Date(b.date) - new Date(a.date));
         
         const lastRec = personRecords.length > 0 ? personRecords[0] : null;
@@ -1108,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             others = Math.max(0, others - 30);
             
             if (warn) {
-                alert(`Not enough balance for \${rName}! Values will not drop below zero.`);
+                alert(`Not enough balance for ${rName}! Values will not drop below zero.`);
             }
         }
 
@@ -1138,19 +1138,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectEl || !container) return;
 
         const currentSelected = selectEl.value;
-        const names = [...new Set(pt.filter(r => r.personName).map(r => r.personName))];
-        names.sort((a, b) => a.localeCompare(b));
+        const namesMap = new Map();
+        pt.filter(r => r.personName).forEach(r => {
+            const trimmed = r.personName.trim();
+            const lower = trimmed.toLowerCase();
+            if (!namesMap.has(lower)) {
+                namesMap.set(lower, trimmed);
+            }
+        });
+        const names = Array.from(namesMap.values()).sort((a, b) => a.localeCompare(b));
         
         selectEl.innerHTML = '<option value="">Select Customer...</option>';
         names.forEach(name => {
             const opt = document.createElement('option');
             opt.value = name;
             opt.textContent = name;
-            if (name === currentSelected) opt.selected = true;
+            if (name.toLowerCase() === currentSelected.toLowerCase()) opt.selected = true;
             selectEl.appendChild(opt);
         });
 
-        renderCustomerTable(currentSelected);
+        renderCustomerTable(selectEl.value);
     }
 
     function renderCustomerTable(customerName) {
@@ -1159,12 +1166,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!customerName) {
             container.innerHTML = '<div style="text-align: center; color: var(--text-light); padding: 40px 20px;">Please select a customer to view their personal usage register.</div>';
+            container.removeAttribute('data-rendered-customer');
             return;
         }
 
         const pt = DB.get('personal_tracking');
-        const records = pt.filter(r => (r.personName || "") === customerName);
+        const records = pt.filter(r => (r.personName || "").trim().toLowerCase() === customerName.trim().toLowerCase());
         records.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        const targetCustomerRaw = customerName.trim().toLowerCase();
+        const existingCustomer = container.getAttribute('data-rendered-customer');
+        const existingRowsCount = container.querySelectorAll('tbody tr').length;
+
+        // CRITICAL MOBILE FIX: If table exists for same customer and row count hasn't changed, only update input values silently
+        if (existingCustomer === targetCustomerRaw && existingRowsCount === records.length && records.length > 0) {
+            records.forEach(r => {
+                const inputs = ['f1', 'pp', 'afresh', 'others', 'sp', 'extra1', 'extra2'];
+                inputs.forEach(col => {
+                    const inp = container.querySelector(`.sheet-input[data-col="${col}"][data-id="${r.id}"]`);
+                    if (inp && document.activeElement !== inp) {
+                        inp.value = r[col] !== undefined ? r[col] : '';
+                        if (['f1','pp','afresh','others'].includes(col)) {
+                            if (parseFloat(r[col]) <= 0) {
+                                inp.style.color = 'var(--alert-color)';
+                                inp.style.fontWeight = 'bold';
+                            } else {
+                                inp.style.color = 'inherit';
+                                inp.style.fontWeight = 'normal';
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Keep Summary updated quietly without breaking focus
+            const latest = records[records.length - 1] || {};
+            const sumBox = container.querySelector('#usage-summary-box');
+            if (sumBox) {
+                sumBox.innerHTML = `Remaining Balance: F1 (<strong style="color:${latest.f1 <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.f1||0}</strong>) | PP (<strong style="color:${latest.pp <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.pp||0}</strong>) | AFRESH (<strong style="color:${latest.afresh <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.afresh||0}</strong>) | OTHERS (<strong style="color:${latest.others <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.others||0}</strong>)`;
+            }
+            return; // We skip full InnerHTML re-render!
+        }
 
         const sheetStyle = "width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;";
         const thStyle = "background: #f4f6f8; padding: 12px 8px; position: sticky; top: 0; font-size: 13px; font-weight: 600; color: #495057; border-bottom: 2px solid var(--border-color); border-right: 1px solid #e9ecef; text-align: center; z-index: 2;";
@@ -1176,7 +1218,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const slNo = idx + 1;
             const bgHex = idx % 2 === 0 ? '#ffffff' : '#fcfcfc';
             
-            // Helper to add 'color: red' to input inline style if value <= 0
             const f1Style = r.f1 <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
             const ppStyle = r.pp <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
             const afreshStyle = r.afresh <= 0 ? `${inputStyle} color: var(--alert-color); font-weight: bold;` : inputStyle;
@@ -1201,11 +1242,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const latest = records[records.length - 1] || {};
         const summaryText = `Remaining Balance: F1 (<strong style="color:${latest.f1 <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.f1||0}</strong>) | PP (<strong style="color:${latest.pp <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.pp||0}</strong>) | AFRESH (<strong style="color:${latest.afresh <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.afresh||0}</strong>) | OTHERS (<strong style="color:${latest.others <= 0 ? 'var(--alert-color)' : 'inherit'}">${latest.others||0}</strong>)`;
 
+        container.setAttribute('data-rendered-customer', targetCustomerRaw);
         container.innerHTML = `
             <div style="margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                     <h3 style="font-size: 18px; color: var(--text-dark); margin: 0;">Usage Register: <span style="color: var(--primary-color);">${customerName}</span></h3>
-                    <div style="font-size: 14px; color: var(--text-light); background: #fdfdfd; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">${summaryText}</div>
+                    <div id="usage-summary-box" style="font-size: 14px; color: var(--text-light); background: #fdfdfd; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">${summaryText}</div>
                 </div>
                 <div style="overflow-x: auto; max-height: calc(100vh - 300px); display: block; border-radius: 8px;">
                     <table style="${sheetStyle}">
@@ -1239,6 +1281,8 @@ document.addEventListener('DOMContentLoaded', () => {
             inp.addEventListener('blur', (e) => {
                e.target.style.border = '1px solid transparent';
                e.target.style.background = 'transparent';
+               
+               // Optional UX Success indicator logic could go here smoothly
             });
             inp.addEventListener('change', (e) => {
                 const rId = e.target.getAttribute('data-id');
@@ -1260,7 +1304,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     trData[idx][col] = newVal;
                     DB.set('personal_tracking', trData);
-                    // Update dropdown or others silently over DOM without full re-render
+                    // Targeted visual indicator for success:
+                    e.target.style.transition = 'background 0.3s';
+                    e.target.style.background = '#e6f4ea';
+                    setTimeout(() => e.target.style.background = 'transparent', 500);
                 }
             });
         });
