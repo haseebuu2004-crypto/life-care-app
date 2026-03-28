@@ -103,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     product_flavors: DB.get('product_flavors'),
                     sales: DB.get('sales'),
                     attendance: DB.get('attendance'),
+                    personal_tracking: DB.get('personal_tracking'),
                     timestamp: Date.now()
                 };
                 const docRef = doc(db, "users", currentUserUID);
@@ -130,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cloudData.product_flavors !== undefined) localStorage.setItem(`lifecare_${currentUserUID}_product_flavors`, JSON.stringify(cloudData.product_flavors));
                 if (cloudData.sales !== undefined) localStorage.setItem(`lifecare_${currentUserUID}_sales`, JSON.stringify(cloudData.sales));
                 if (cloudData.attendance !== undefined) localStorage.setItem(`lifecare_${currentUserUID}_attendance`, JSON.stringify(cloudData.attendance));
+                if (cloudData.personal_tracking !== undefined) localStorage.setItem(`lifecare_${currentUserUID}_personal_tracking`, JSON.stringify(cloudData.personal_tracking));
                 refreshApp();
             }
         });
@@ -146,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             DB.set('product_flavors', JSON.parse(localStorage.getItem('product_flavors')||"[]"));
             DB.set('sales', JSON.parse(localStorage.getItem('sales')||"[]"));
             DB.set('attendance', JSON.parse(localStorage.getItem('attendance')||"[]"));
+            DB.set('personal_tracking', JSON.parse(localStorage.getItem('personal_tracking')||"[]"));
             requiresMigration = true;
         }
 
@@ -178,6 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  DB.set('product_flavors', JSON.parse(localStorage.getItem(`lifecare_${oldEmail}_product_flavors`)||"[]"));
                  DB.set('sales', JSON.parse(localStorage.getItem(`lifecare_${oldEmail}_sales`)||"[]"));
                  DB.set('attendance', JSON.parse(localStorage.getItem(`lifecare_${oldEmail}_attendance`)||"[]"));
+                 DB.set('personal_tracking', JSON.parse(localStorage.getItem(`lifecare_${oldEmail}_personal_tracking`)||"[]"));
                  requiresMigration = true;
             }
         }
@@ -1066,17 +1070,194 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form-add-attendance').addEventListener('submit', (e) => {
         e.preventDefault();
         const atts = DB.get('attendance');
+        const rDate = document.getElementById('inp-att-date').value;
+        const rName = document.getElementById('inp-att-name').value.trim();
+        const rStatus = document.getElementById('inp-att-status').value;
+
         atts.unshift({
             id: generateId(),
-            date: document.getElementById('inp-att-date').value,
-            name: document.getElementById('inp-att-name').value,
-            status: document.getElementById('inp-att-status').value
+            date: rDate,
+            name: rName,
+            status: rStatus
         });
         DB.set('attendance', atts);
+
+        // Auto Reduction Logic for Personal Tracking
+        const pt = DB.get('personal_tracking');
+        const personRecords = pt.filter(r => r.personName.toLowerCase() === rName.toLowerCase());
+        personRecords.sort((a,b) => new Date(b.date) - new Date(a.date));
+        
+        const lastRec = personRecords.length > 0 ? personRecords[0] : null;
+        
+        let f1 = lastRec ? lastRec.f1 : 0;
+        let pp = lastRec ? lastRec.pp : 0;
+        let afresh = lastRec ? lastRec.afresh : 0;
+        let others = lastRec ? lastRec.others : 0;
+        let sp = lastRec ? lastRec.sp : 0;
+        let ext1 = lastRec ? lastRec.extra1 : '';
+        let ext2 = lastRec ? lastRec.extra2 : '';
+
+        if (rStatus.includes('Present')) {
+            let warn = false;
+            if (f1 < 3 || pp < 1 || afresh < 2 || others < 30) {
+                warn = true;
+            }
+            f1 = Math.max(0, f1 - 3);
+            pp = Math.max(0, pp - 1);
+            afresh = Math.max(0, afresh - 2);
+            others = Math.max(0, others - 30);
+            
+            if (warn) {
+                alert(`Not enough balance for \${rName}! Values will not drop below zero.`);
+            }
+        }
+
+        pt.unshift({
+            id: generateId(),
+            personName: rName,
+            date: rDate,
+            f1: f1,
+            pp: pp,
+            afresh: afresh,
+            others: others,
+            sp: sp,
+            extra1: ext1,
+            extra2: ext2
+        });
+        DB.set('personal_tracking', pt);
+
         e.target.reset();
         closeModal();
         refreshApp();
     });
+
+    function renderPersonalSheets() {
+        const pt = DB.get('personal_tracking');
+        const container = document.getElementById('personal-tracking-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const grouped = {};
+        pt.forEach(r => {
+            const nameLower = (r.personName || "").toLowerCase();
+            if (!grouped[nameLower]) grouped[nameLower] = { name: r.personName, records: [] };
+            grouped[nameLower].records.push(r);
+        });
+
+        const sheetStyle = "width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 5px;";
+        const thStyle = "background: var(--border-color); padding: 8px; position: sticky; top: 0; font-size: 13px; font-weight: 600; z-index: 2;";
+        const tdStyle = "border-bottom: 1px solid #eee; padding: 4px; min-width: 60px;";
+        const inputStyle = "width: 100%; min-width: 60px; border: 1px solid transparent; background: transparent; padding: 4px; border-radius: 4px; font-size: 14px; box-sizing: border-box;";
+
+        for (const key in grouped) {
+            const person = grouped[key];
+            person.records.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            const latest = person.records[0] || {};
+            const summaryText = `Remaining: F1: \${latest.f1||0} | PP: \${latest.pp||0} | AFRESH: \${latest.afresh||0} | OTHERS: \${latest.others||0}`;
+
+            let rowsHTML = '';
+            person.records.forEach(r => {
+                rowsHTML += `
+                    <tr>
+                        <td style="\${tdStyle}">\${r.date}</td>
+                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="f1" value="\${r.f1}"></td>
+                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="pp" value="\${r.pp}"></td>
+                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="afresh" value="\${r.afresh}"></td>
+                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="others" value="\${r.others}"></td>
+                        <td style="\${tdStyle}"><input type="number" step="any" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="sp" value="\${r.sp}"></td>
+                        <td style="\${tdStyle}"><input type="text" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="extra1" value="\${r.extra1 || ''}"></td>
+                        <td style="\${tdStyle}"><input type="text" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="extra2" value="\${r.extra2 || ''}"></td>
+                        <td style="\${tdStyle}; text-align:center;">
+                            <button class="icon-btn delete-btn" data-type="tracking" data-id="\${r.id}" style="color: var(--alert-color); font-size: 14px; margin: 0; padding: 4px;" title="Delete Record">🗑</button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            const card = document.createElement('div');
+            card.classList.add('accordion-card');
+            card.innerHTML = `
+                <div class="accordion-header">
+                    <div class="accordion-title">
+                        <span class="accordion-icon">▶</span>
+                        \${person.name}
+                    </div>
+                    <div class="accordion-summary" style="line-height:1.4; color: var(--primary-color);">
+                        \${summaryText}
+                    </div>
+                </div>
+                <div class="accordion-body" style="padding: 0;">
+                    <div style="overflow-x: auto; max-height: 350px; display: block; border-bottom: 1px solid #eee;">
+                        <table style="\${sheetStyle}">
+                            <thead>
+                                <tr>
+                                    <th style="\${thStyle}; min-width:105px; z-index:3;">Date</th>
+                                    <th style="\${thStyle}">F1</th>
+                                    <th style="\${thStyle}">PP</th>
+                                    <th style="\${thStyle}">AFRESH</th>
+                                    <th style="\${thStyle}">OTHERS</th>
+                                    <th style="\${thStyle}">S.P</th>
+                                    <th style="\${thStyle}">Extra 1</th>
+                                    <th style="\${thStyle}">Extra 2</th>
+                                    <th style="\${thStyle}"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                \${rowsHTML}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        container.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                header.parentElement.classList.toggle('expanded');
+                const icon = header.querySelector('.accordion-icon');
+                if (icon) {
+                    icon.textContent = header.parentElement.classList.contains('expanded') ? '▼' : '▶';
+                }
+            });
+        });
+
+        container.querySelectorAll('.sheet-input').forEach(inp => {
+            inp.addEventListener('focus', (e) => {
+               e.target.style.border = '1px solid var(--primary-color)';
+               e.target.style.background = '#fff';
+            });
+            inp.addEventListener('blur', (e) => {
+               e.target.style.border = '1px solid transparent';
+               e.target.style.background = 'transparent';
+            });
+            inp.addEventListener('change', (e) => {
+                const rId = e.target.getAttribute('data-id');
+                const col = e.target.getAttribute('data-col');
+                let newVal = e.target.value;
+                const trData = DB.get('personal_tracking');
+                const idx = trData.findIndex(x => x.id === rId);
+                if (idx > -1) {
+                    if (['f1','pp','afresh','others','sp'].includes(col)) {
+                        newVal = parseFloat(newVal) || 0;
+                        if (col === 'sp') {
+                            const deduction = prompt('Reduction per unit? (example: 1)');
+                            if (deduction !== null && deduction.trim() !== '') {
+                                const deductVal = parseFloat(deduction) || 0;
+                                newVal = Math.max(0, newVal - deductVal);
+                                e.target.value = newVal;
+                            }
+                        }
+                    }
+                    trData[idx][col] = newVal;
+                    DB.set('personal_tracking', trData);
+                    renderPersonalSheets();
+                }
+            });
+        });
+    }
 
     if (document.getElementById('attendance-search-date')) {
         document.getElementById('attendance-search-date').addEventListener('change', renderAttendance);
@@ -1098,6 +1279,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (saleIdx > -1) {
                     sales.splice(saleIdx, 1);
                     DB.set('sales', sales);
+                    refreshApp();
+                }
+            }
+        } else if (type === 'tracking') {
+            if (confirm("Are you sure you want to delete this tracking record?")) {
+                const pt = DB.get('personal_tracking');
+                const pIdx = pt.findIndex(a => a.id === id);
+                if (pIdx > -1) {
+                    pt.splice(pIdx, 1);
+                    DB.set('personal_tracking', pt);
                     refreshApp();
                 }
             }
@@ -1441,6 +1632,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirm("This will delete all sales, stock updates, and attendance data. Continue?")) {
                 DB.set('sales', []);
                 DB.set('attendance', []);
+                DB.set('personal_tracking', []);
 
                 let bases = DB.get('base_products');
                 let flavors = DB.get('product_flavors');
@@ -1460,6 +1652,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderStock(document.getElementById('stock-search').value);
         renderSales(document.getElementById('sales-search').value);
         renderAttendance();
+        if (typeof renderPersonalSheets === "function") renderPersonalSheets();
     }
 
     // initSession is handled by Firebase AuthState changes
