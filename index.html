@@ -51,6 +51,7 @@
             <li data-view="stock-view">📦 Stock</li>
             <li data-view="sales-view">💰 Sales</li>
             <li data-view="attendance-view">📅 Attendance</li>
+            <li data-view="personal-usage-view">👤 Personal Usage</li>
             <li id="btn-logout" style="margin-top: 24px; color: var(--alert-color);">🚪 Logout</li>
         </ul>
     </nav>
@@ -139,14 +140,19 @@
                 <button id="btn-add-attendance" class="btn btn-primary">+ Mark</button>
             </div>
             <div id="attendance-accordion-container" class="accordion-container"></div>
+        </section>
 
-            <!-- PERSONAL USAGE TRACKING -->
-            <div style="margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 24px;">
-                <h3 style="margin-bottom: 15px; font-size: 18px; color: var(--text-dark); display:flex; align-items:center; gap:8px;">
-                    <span>👤</span> Personal Usage Tracking
-                </h3>
-                <div id="personal-tracking-container" class="accordion-container">
-                    <!-- Dynamic person sheets inserted here -->
+        <!-- PERSONAL USAGE VIEW -->
+        <section id="personal-usage-view" class="view">
+            <div class="toolbar" style="margin-bottom: 20px;">
+                <select id="usage-customer-select" class="search-input" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: #fff; width: 100%; max-width: 400px; font-size: 15px;">
+                    <option value="">Select Customer...</option>
+                </select>
+            </div>
+            
+            <div id="personal-tracking-container">
+                <div style="text-align: center; color: var(--text-light); padding: 40px 20px;">
+                    Please select a customer to view their personal usage register.
                 </div>
             </div>
         </section>

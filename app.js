@@ -1131,98 +1131,92 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshApp();
     });
 
-    function renderPersonalSheets() {
+    function renderPersonalUsage() {
         const pt = DB.get('personal_tracking');
+        const selectEl = document.getElementById('usage-customer-select');
+        const container = document.getElementById('personal-tracking-container');
+        if (!selectEl || !container) return;
+
+        const currentSelected = selectEl.value;
+        const names = [...new Set(pt.filter(r => r.personName).map(r => r.personName))];
+        names.sort((a, b) => a.localeCompare(b));
+        
+        selectEl.innerHTML = '<option value="">Select Customer...</option>';
+        names.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            if (name === currentSelected) opt.selected = true;
+            selectEl.appendChild(opt);
+        });
+
+        renderCustomerTable(currentSelected);
+    }
+
+    function renderCustomerTable(customerName) {
         const container = document.getElementById('personal-tracking-container');
         if (!container) return;
-        container.innerHTML = '';
 
-        const grouped = {};
-        pt.forEach(r => {
-            const nameLower = (r.personName || "").toLowerCase();
-            if (!grouped[nameLower]) grouped[nameLower] = { name: r.personName, records: [] };
-            grouped[nameLower].records.push(r);
-        });
-
-        const sheetStyle = "width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 5px;";
-        const thStyle = "background: var(--border-color); padding: 8px; position: sticky; top: 0; font-size: 13px; font-weight: 600; z-index: 2;";
-        const tdStyle = "border-bottom: 1px solid #eee; padding: 4px; min-width: 60px;";
-        const inputStyle = "width: 100%; min-width: 60px; border: 1px solid transparent; background: transparent; padding: 4px; border-radius: 4px; font-size: 14px; box-sizing: border-box;";
-
-        for (const key in grouped) {
-            const person = grouped[key];
-            person.records.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-            const latest = person.records[0] || {};
-            const summaryText = `Remaining: F1: \${latest.f1||0} | PP: \${latest.pp||0} | AFRESH: \${latest.afresh||0} | OTHERS: \${latest.others||0}`;
-
-            let rowsHTML = '';
-            person.records.forEach(r => {
-                rowsHTML += `
-                    <tr>
-                        <td style="\${tdStyle}">\${r.date}</td>
-                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="f1" value="\${r.f1}"></td>
-                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="pp" value="\${r.pp}"></td>
-                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="afresh" value="\${r.afresh}"></td>
-                        <td style="\${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="others" value="\${r.others}"></td>
-                        <td style="\${tdStyle}"><input type="number" step="any" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="sp" value="\${r.sp}"></td>
-                        <td style="\${tdStyle}"><input type="text" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="extra1" value="\${r.extra1 || ''}"></td>
-                        <td style="\${tdStyle}"><input type="text" class="sheet-input" style="\${inputStyle}" data-id="\${r.id}" data-col="extra2" value="\${r.extra2 || ''}"></td>
-                        <td style="\${tdStyle}; text-align:center;">
-                            <button class="icon-btn delete-btn" data-type="tracking" data-id="\${r.id}" style="color: var(--alert-color); font-size: 14px; margin: 0; padding: 4px;" title="Delete Record">🗑</button>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            const card = document.createElement('div');
-            card.classList.add('accordion-card');
-            card.innerHTML = `
-                <div class="accordion-header">
-                    <div class="accordion-title">
-                        <span class="accordion-icon">▶</span>
-                        \${person.name}
-                    </div>
-                    <div class="accordion-summary" style="line-height:1.4; color: var(--primary-color);">
-                        \${summaryText}
-                    </div>
-                </div>
-                <div class="accordion-body" style="padding: 0;">
-                    <div style="overflow-x: auto; max-height: 350px; display: block; border-bottom: 1px solid #eee;">
-                        <table style="\${sheetStyle}">
-                            <thead>
-                                <tr>
-                                    <th style="\${thStyle}; min-width:105px; z-index:3;">Date</th>
-                                    <th style="\${thStyle}">F1</th>
-                                    <th style="\${thStyle}">PP</th>
-                                    <th style="\${thStyle}">AFRESH</th>
-                                    <th style="\${thStyle}">OTHERS</th>
-                                    <th style="\${thStyle}">S.P</th>
-                                    <th style="\${thStyle}">Extra 1</th>
-                                    <th style="\${thStyle}">Extra 2</th>
-                                    <th style="\${thStyle}"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                \${rowsHTML}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            container.appendChild(card);
+        if (!customerName) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-light); padding: 40px 20px;">Please select a customer to view their personal usage register.</div>';
+            return;
         }
 
-        container.querySelectorAll('.accordion-header').forEach(header => {
-            header.addEventListener('click', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
-                header.parentElement.classList.toggle('expanded');
-                const icon = header.querySelector('.accordion-icon');
-                if (icon) {
-                    icon.textContent = header.parentElement.classList.contains('expanded') ? '▼' : '▶';
-                }
-            });
+        const pt = DB.get('personal_tracking');
+        const records = pt.filter(r => (r.personName || "") === customerName);
+        records.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        const sheetStyle = "width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;";
+        const thStyle = "background: #f4f6f8; padding: 12px 8px; position: sticky; top: 0; font-size: 13px; font-weight: 600; color: #495057; border-bottom: 2px solid var(--border-color); border-right: 1px solid #e9ecef; text-align: center; z-index: 2;";
+        const tdStyle = "border-bottom: 1px solid #e9ecef; border-right: 1px solid #e9ecef; padding: 4px; min-width: 60px; text-align: center; vertical-align: middle;";
+        const inputStyle = "width: 100%; min-width: 60px; border: 1px solid transparent; background: transparent; padding: 8px 4px; border-radius: 4px; font-size: 14px; box-sizing: border-box; text-align: center; transition: all 0.2s;";
+
+        let rowsHTML = '';
+        records.forEach((r, idx) => {
+            const slNo = idx + 1;
+            const bgHex = idx % 2 === 0 ? '#ffffff' : '#fcfcfc';
+            rowsHTML += `
+                <tr style="background: ${bgHex};">
+                    <td style="${tdStyle} font-weight: 500; color: #6c757d; border-left: 1px solid #e9ecef;">${slNo}</td>
+                    <td style="${tdStyle} text-align: left; padding-left: 12px; font-weight: 500; min-width: 110px;">${r.date}</td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="f1" value="${r.f1}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="pp" value="${r.pp}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="afresh" value="${r.afresh}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" min="0" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="others" value="${r.others}"></td>
+                    <td style="${tdStyle}"><input type="number" step="any" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="sp" value="${r.sp}"></td>
+                    <td style="${tdStyle}"><input type="text" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="extra1" value="${r.extra1 || ''}"></td>
+                    <td style="${tdStyle}"><input type="text" class="sheet-input" style="${inputStyle}" data-id="${r.id}" data-col="extra2" value="${r.extra2 || ''}"></td>
+                    <td style="${tdStyle}"><button class="icon-btn delete-btn" data-type="tracking" data-id="${r.id}" style="color: var(--alert-color); font-size: 14px; margin: 0; padding: 4px;" title="Delete Record">🗑</button></td>
+                </tr>
+            `;
         });
+
+        container.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 12px; font-size: 18px; color: var(--text-dark);">Usage Register: <span style="color: var(--primary-color);">${customerName}</span></h3>
+                <div style="overflow-x: auto; max-height: calc(100vh - 300px); display: block; border-radius: 8px;">
+                    <table style="${sheetStyle}">
+                        <thead>
+                            <tr>
+                                <th style="${thStyle} width: 50px; border-left: 1px solid var(--border-color);">Sl No</th>
+                                <th style="${thStyle} text-align: left; padding-left: 12px;">Date</th>
+                                <th style="${thStyle}">F1</th>
+                                <th style="${thStyle}">PP</th>
+                                <th style="${thStyle}">AFRESH</th>
+                                <th style="${thStyle}">OTHERS</th>
+                                <th style="${thStyle}">S.P</th>
+                                <th style="${thStyle}">Extra 1</th>
+                                <th style="${thStyle}">Extra 2</th>
+                                <th style="${thStyle}"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHTML}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
 
         container.querySelectorAll('.sheet-input').forEach(inp => {
             inp.addEventListener('focus', (e) => {
@@ -1253,9 +1247,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     trData[idx][col] = newVal;
                     DB.set('personal_tracking', trData);
-                    renderPersonalSheets();
+                    // Update dropdown or others silently over DOM without full re-render
                 }
             });
+        });
+    }
+
+    const usageSelect = document.getElementById('usage-customer-select');
+    if (usageSelect) {
+        usageSelect.addEventListener('change', (e) => {
+            renderCustomerTable(e.target.value);
         });
     }
 
@@ -1652,7 +1653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderStock(document.getElementById('stock-search').value);
         renderSales(document.getElementById('sales-search').value);
         renderAttendance();
-        if (typeof renderPersonalSheets === "function") renderPersonalSheets();
+        if (typeof renderPersonalUsage === "function") renderPersonalUsage();
     }
 
     // initSession is handled by Firebase AuthState changes
