@@ -1,0 +1,48 @@
+{
+  "base_products": [
+    {
+      "id": "593c0581-ba13-4583-a30b-045d56ce6c72",
+      "name": "AKA",
+      "totalQty": 10
+    },
+    {
+      "id": "c1486105-84aa-410b-bd4a-0743b2061410",
+      "name": "FRB",
+      "totalQty": 10
+    },
+    {
+      "id": "9b6ec5e5-7f36-47c5-b63d-a0dba4b54de9",
+      "name": "DB",
+      "totalQty": 10
+    }
+  ],
+  "product_flavors": [
+    {
+      "id": "873c2add-cf45-4f69-bee2-3ac258d77d49",
+      "productId": "593c0581-ba13-4583-a30b-045d56ce6c72",
+      "flavor": "Base",
+      "vp": 7.8,
+      "sp": 464,
+      "qty": 10
+    },
+    {
+      "id": "ca7219b5-a915-44b3-ada3-afe6684cbaa5",
+      "productId": "c1486105-84aa-410b-bd4a-0743b2061410",
+      "flavor": "Base",
+      "vp": 32.95,
+      "sp": 1800,
+      "qty": 10
+    },
+    {
+      "id": "c17614af-65c9-4447-9587-630ba3457729",
+      "productId": "9b6ec5e5-7f36-47c5-b63d-a0dba4b54de9",
+      "flavor": "Base",
+      "vp": 45,
+      "sp": 45,
+      "qty": 10
+    }
+  ],
+  "sales": [],
+  "attendance": [],
+  "personal_tracking": []
+}
