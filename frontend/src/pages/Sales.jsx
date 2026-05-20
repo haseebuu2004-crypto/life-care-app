@@ -1,81 +1,95 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import useStore from '../store/useStore';
-import { Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
+import { AddSaleModal } from '../components/AddSaleModal';
+import { useDebounce } from '../hooks/useDebounce';
 
 export function Sales() {
-    const { sales, stock, user, addSale } = useStore();
-    const isAdmin = user?.role === 'admin';
+    const { sales, user } = useStore();
     const [search, setSearch] = useState('');
+    const [showModal, setShowModal] = useState(false);
 
-    const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], customer: '', stock_id: '', qty: 1 });
+    // PERFORMANCE: Debounce search to avoid expensive filtering on every keystroke
+    const debouncedSearch = useDebounce(search, 300);
 
-    const onSubmit = async (e) => {
-        e.preventDefault();
-        const selected = stock.find(s => s.id === parseInt(form.stock_id));
-        if (!selected) return alert("Select product");
-        
+    const handleDelete = useCallback(async (id) => {
+        if (!window.confirm('Are you sure you want to delete this sale? This action cannot be undone.')) return;
         try {
-            await addSale({ ...form, sale_price: selected.sp });
-            setForm(f => ({ ...f, customer: '', stock_id: '', qty: 1 }));
+            const { deleteSale } = useStore.getState();
+            await deleteSale(id);
+            useStore.getState().showToast('Sale deleted successfully', 'success');
         } catch (err) {
-            alert("Failed. Check stock availability.");
+            let msg = err.message || 'Failed to delete sale';
+            if (msg.includes("SQLITE_")) {
+                msg = "Database error: Failed to delete sale.";
+            }
+            useStore.getState().showToast(msg, 'error');
         }
-    };
+    }, []);
 
     const filteredSales = useMemo(() => {
-        return sales.filter(s => s.customer.toLowerCase().includes(search.toLowerCase()) || (s.product_name || '').toLowerCase().includes(search.toLowerCase()));
-    }, [sales, search]);
+        if (!Array.isArray(sales)) return [];
+        return sales.filter(s => {
+            const customer = (s?.customer || '').toLowerCase();
+            const product = (s?.product_name || '').toLowerCase();
+            const q = debouncedSearch.toLowerCase();
+            return customer.includes(q) || product.includes(q);
+        });
+    }, [sales, debouncedSearch]);
 
     return (
         <div>
-            <h2>Sales Records</h2>
-            <div className="card" style={{margin: '20px 0'}}>
-                <form onSubmit={onSubmit} className="flex gap-4 items-center" style={{flexWrap: 'wrap'}}>
-                    <input type="date" value={form.date} onChange={e=>setForm({...form, date: e.target.value})} style={{width:160}} required />
-                    <input placeholder="Customer Name" value={form.customer} onChange={e=>setForm({...form, customer: e.target.value})} style={{flex:1, minWidth:200}} required />
-                    <select value={form.stock_id} onChange={e=>setForm({...form, stock_id: e.target.value})} style={{flex:1, minWidth:200}} required>
-                        <option value="">Select Product...</option>
-                        {stock.map(s => (
-                            <option key={s.id} value={s.id}>{s.product_name} ({s.flavor}) - Avail: {s.qty}</option>
-                        ))}
-                    </select>
-                    <input type="number" min="1" value={form.qty} onChange={e=>setForm({...form, qty: parseInt(e.target.value)||1})} style={{width: 80}} required />
-                    <button type="submit" className="btn btn-primary">Add Sale</button>
-                </form>
-            </div>
-
             <div className="flex justify-between items-center" style={{marginBottom: 20}}>
-                <input placeholder="Search records..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth: 300}} />
+                <h2>Sales Records</h2>
+                <div className="flex gap-4">
+                    <input placeholder="Search records..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth: 300}} />
+                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                        <Plus size={16}/> Add Sale
+                    </button>
+                </div>
             </div>
 
-            <div className="table-container">
-                <table>
-                    <thead>
+            <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                         <tr>
-                            <th>Date</th>
-                            <th>Customer</th>
-                            <th>Product</th>
-                            <th className="text-right">Qty</th>
-                            <th className="text-right">Total</th>
-                            <th className="text-right">Profit</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Date</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Customer</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Product</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Qty</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total (₹)</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Profit (₹)</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredSales.map(s => (
-                            <tr key={s.id}>
-                                <td>{s.date}</td>
-                                <td><strong>{s.customer}</strong></td>
-                                <td>{s.product_name} ({s.flavor})</td>
-                                <td className="text-right">{s.qty}</td>
-                                <td className="text-right">₹{s.total_amount}</td>
-                                <td className="text-right" style={{color: s.profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)'}}>
-                                    {s.profit >= 0 ? '+' : ''}₹{s.profit}
+                            <tr key={s.item_id || s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '12px 16px' }}>{s.date}</td>
+                                <td style={{ padding: '12px 16px' }}><strong>{s.customer}</strong></td>
+                                <td style={{ padding: '12px 16px' }}>{s.product_name} {s.flavor ? `(${s.flavor})` : ''}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right' }}>{s.qty}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold' }}>{s.total_amount}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right', color: s.profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
+                                    {s.profit >= 0 ? '+' : ''}{s.profit}
+                                </td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                    <button className="btn icon-btn" style={{color:'var(--alert-color)'}} onClick={() => handleDelete(s.id)}>
+                                        <Trash2 size={16}/>
+                                    </button>
                                 </td>
                             </tr>
                         ))}
+                        {filteredSales.length === 0 && (
+                            <tr>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: '30px' }}>No sales records found.</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
+
+            {showModal && <AddSaleModal onClose={() => setShowModal(false)} />}
         </div>
     );
 }
