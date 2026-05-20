@@ -30,8 +30,23 @@ export function AuthProvider({ children }) {
         setUser(null);
     };
 
+    const googleLogin = async (idToken) => {
+        try {
+            const { data } = await api.post('/auth/google', { idToken });
+            if (!data?.token) throw new Error('Invalid response from server');
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('sessionId', String(data.sessionId || ''));
+            const loggedInUser = { username: data.username, role: data.role };
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+            setUser(loggedInUser);
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Google Login failed';
+            throw new Error(msg);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, logout }}>
+        <AuthContext.Provider value={{ user, login, logout, googleLogin }}>
             {children}
         </AuthContext.Provider>
     );

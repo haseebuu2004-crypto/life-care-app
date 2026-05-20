@@ -52,6 +52,16 @@ const useStore = create((set, get) => ({
         }
     },
 
+    googleLogin: async (idToken) => {
+        try {
+            const res = await api.post('/auth/google', { idToken });
+            return extract(res); // Will return { token, role, username, sessionId }
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Google login failed on backend';
+            throw new Error(msg);
+        }
+    },
+
     // Stock Actions
     addStock: async (payload) => {
         try {

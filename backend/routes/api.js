@@ -27,6 +27,7 @@ router.get('/dashboard/shake-profit', authenticateToken, authorizeRole(ADMIN_ONL
 
 // Auth
 router.post('/auth/login', authController.login);
+router.post('/auth/google', authController.googleLogin);
 router.post('/auth/logout', authenticateToken, authController.logout);
 router.get('/login-history', authenticateToken, authorizeRole(ADMIN_ONLY), authController.getLoginHistory);
 
