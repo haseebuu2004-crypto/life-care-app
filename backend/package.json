@@ -10,11 +10,15 @@
     "jest": "^30.3.0",
     "jsonwebtoken": "^9.0.3",
     "pdfkit": "^0.18.0",
-    "sqlite3": "^6.0.1",
+    "sqlite3": "^5.1.7",
     "supertest": "^7.2.2",
     "uuid": "^13.0.0"
   },
   "scripts": {
+    "start": "node server.js",
     "test": "jest"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
