@@ -1,97 +1,118 @@
-const { readDB, writeDB } = require('../data/dbHelper');
-const { v4: uuidv4 } = require('uuid');
+const db = require('../config/db');
 
-function getSales() {
-    const db = readDB();
-    // sort descending by date (or let frontend do it, but we can do it here roughly)
-    const sales = db.sales || [];
-    return sales.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
-}
+exports.getAllSales = () => {
+    return new Promise((resolve, reject) => {
+        db.all(`SELECT s.id as id, si.id as item_id, s.date, s.customer, pv.flavor, p.name as product_name, si.qty, si.sale_price, si.total_amount, si.profit, si.variant_id as stock_id
+                FROM sale_items si
+                JOIN sales s ON si.sale_id = s.id
+                LEFT JOIN product_variants pv ON si.variant_id = pv.id
+                LEFT JOIN products p ON pv.product_id = p.id
+                ORDER BY s.date DESC`, [], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
 
-function addSale(date, customer, prodSearch, flavorSearch, qty, salePrice) {
-    const db = readDB();
-    const bases = db.base_products || [];
-    const flavors = db.product_flavors || [];
+exports.addSaleTransaction = (date, customerName, uniqueProducts) => {
+    return new Promise((resolve, reject) => {
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            
+            db.run('INSERT INTO sales (date, customer, total_amount, total_profit) VALUES (?, ?, 0, 0)', [date, customerName], function(err) {
+                if (err) {
+                    db.run('ROLLBACK');
+                    return reject(err);
+                }
+                const saleId = this.lastID;
+                let saleTotalAmount = 0;
+                let saleTotalProfit = 0;
 
-    const lowSearch = (str) => (str ? str.toLowerCase() : "");
-    const ps = lowSearch(prodSearch);
-    const fs = lowSearch(flavorSearch);
+                const processItem = (index) => {
+                    if (index >= uniqueProducts.length) {
+                        // All processed
+                        db.run('UPDATE sales SET total_amount = ?, total_profit = ? WHERE id = ?', [saleTotalAmount, saleTotalProfit, saleId], (updateErr) => {
+                            if (updateErr) {
+                                db.run('ROLLBACK');
+                                return reject(updateErr);
+                            }
+                            db.run('COMMIT');
+                            resolve();
+                        });
+                        return;
+                    }
 
-    let matchingFlavs = [];
-    if (ps && fs) {
-        const b = bases.find(x => lowSearch(x.name) === ps);
-        if (b) matchingFlavs = flavors.filter(f => f.productId === b.id && lowSearch(f.flavor) === fs);
-    } else if (!ps && fs) {
-        matchingFlavs = flavors.filter(f => lowSearch(f.flavor) === fs);
-    } else if (ps && !fs) {
-        const b = bases.find(x => lowSearch(x.name) === ps);
-        if (b) matchingFlavs = flavors.filter(f => f.productId === b.id);
-    }
+                    const p = uniqueProducts[index];
+                    
+                    // Fetch stock info with product name for better errors
+                    db.get(`
+                        SELECT s.qty, pr.name as product_name, pv.flavor 
+                        FROM stock s 
+                        JOIN product_variants pv ON s.variant_id = pv.id
+                        JOIN products pr ON pv.product_id = pr.id
+                        WHERE s.variant_id = ?
+                    `, [p.stock_id], (err, row) => {
+                        if (err) {
+                            db.run('ROLLBACK');
+                            return reject(err);
+                        }
+                        
+                        if (!row) {
+                            db.run('ROLLBACK');
+                            return reject(new Error("Invalid product variant selected."));
+                        }
+                        
+                        if (row.qty < p.quantity) {
+                            db.run('ROLLBACK');
+                            const flavorText = row.flavor && row.flavor !== 'Base' ? ` (${row.flavor})` : '';
+                            return reject(new Error(`Only ${row.qty} units available for ${row.product_name}${flavorText}`));
+                        }
 
-    if (matchingFlavs.length === 0) throw new Error("Product/Flavour not found in Stock!");
-    const totalAvail = matchingFlavs.reduce((sum, f) => sum + f.qty, 0);
-    if (totalAvail < qty) throw new Error(`Insufficient stock! Only ${totalAvail} available.`);
+                        db.run('UPDATE stock SET qty = qty - ? WHERE variant_id = ?', [p.quantity, p.stock_id], (updateErr) => {
+                            if (updateErr) {
+                                db.run('ROLLBACK');
+                                return reject(updateErr);
+                            }
+                            
+                            db.run('INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit) VALUES (?, ?, ?, ?, ?, ?)',
+                                [saleId, p.stock_id, p.quantity, p.sale_price, p.total_amount, p.profit], (insErr) => {
+                                    if (insErr) {
+                                        db.run('ROLLBACK');
+                                        return reject(insErr);
+                                    }
+                                    saleTotalAmount += p.total_amount;
+                                    saleTotalProfit += p.profit;
+                                    
+                                    processItem(index + 1);
+                            });
+                        });
+                    });
+                };
 
-    const baseObj = bases.find(b => b.id === matchingFlavs[0].productId);
-    let finalName = baseObj ? baseObj.name : "Unknown";
-    let finalFlavor = flavorSearch ? matchingFlavs[0].flavor : (matchingFlavs.length === 1 ? matchingFlavs[0].flavor : "Various");
+                processItem(0);
+            });
+        });
+    });
+};
 
-    let qtyToReduce = qty;
-    let totalCost = 0;
-    let totalVp = 0;
-    let reductions = [];
+exports.deleteSaleTransaction = (id) => {
+    return new Promise((resolve, reject) => {
+        db.get('SELECT id FROM sales WHERE id = ?', [id], (err, sale) => {
+            if (err) return reject(err);
+            if (!sale) return reject(new Error("Sale not found"));
 
-    for (let i = 0; i < matchingFlavs.length; i++) {
-        if (qtyToReduce <= 0) break;
-        const item = matchingFlavs[i];
-        const reduceAmt = Math.min(item.qty, qtyToReduce);
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
 
-        // Deduct from flavor
-        item.qty -= reduceAmt;
-
-        // Deduct from base
-        const bIndex = bases.findIndex(b => b.id === item.productId);
-        if (bIndex !== -1) {
-            bases[bIndex].totalQty -= reduceAmt;
-        }
-
-        totalCost += (reduceAmt * item.sp);
-        totalVp += (reduceAmt * item.vp);
-        qtyToReduce -= reduceAmt;
-        reductions.push({ id: item.id, baseId: item.productId, qty: reduceAmt });
-    }
-
-    const totalAmount = qty * salePrice;
-    const totalProfit = totalAmount - totalCost;
-
-    const newSale = {
-        id: uuidv4(),
-        date,
-        customer,
-        productId: matchingFlavs[0].productId,
-        saleProdName: finalName,
-        saleFlavorName: finalFlavor,
-        qty,
-        totalAmount,
-        profit: totalProfit,
-        vp: totalVp,
-        reductions: reductions,
-        createdAt: new Date().toISOString()
-    };
-
-    if (!db.sales) db.sales = [];
-    db.sales.push(newSale);
-
-    writeDB(db);
-    return newSale;
-}
-
-function deleteSale(id) {
-    const db = readDB();
-    if (!db.sales) return [];
-    db.sales = db.sales.filter(s => s.id !== id);
-    writeDB(db);
-    return getSales();
-}
-
-module.exports = { getSales, addSale, deleteSale };
+                db.run('DELETE FROM sale_items WHERE sale_id = ?', [id], (err) => {
+                    if (err) { db.run('ROLLBACK'); return reject(err); }
+                    db.run('DELETE FROM sales WHERE id = ?', [id], (err) => {
+                        if (err) { db.run('ROLLBACK'); return reject(err); }
+                        db.run('COMMIT');
+                        resolve();
+                    });
+                });
+            });
+        });
+    });
+};

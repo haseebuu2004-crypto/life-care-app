@@ -1,0 +1,208 @@
+import { useState, useEffect } from 'react';
+import useStore from '../store/useStore';
+import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import { Navigate } from 'react-router-dom';
+import { Plus, Trash2, Edit2, X, Check, Shield } from 'lucide-react';
+
+const ROLES = ['admin', 'user'];
+
+const ROLE_COLORS = {
+    admin:   { bg: '#fef3f2', color: '#b91c1c', border: '#fca5a5' },
+    user:    { bg: '#f9fafb', color: '#374151', border: '#d1d5db' },
+};
+
+function RoleBadge({ role }) {
+    const c = ROLE_COLORS[role] || ROLE_COLORS.user;
+    return (
+        <span style={{
+            background: c.bg, color: c.color, border: `1px solid ${c.border}`,
+            padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, textTransform: 'capitalize'
+        }}>
+            {role}
+        </span>
+    );
+}
+
+function AddUserModal({ onClose }) {
+    const { addUser } = useStore();
+    const [form, setForm] = useState({ username: '', password: '', role: 'user' });
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await addUser(form);
+            useStore.getState().showToast(`User "${form.username}" created`, 'success');
+            onClose();
+        } catch (err) {
+            const msg = err.message || err.response?.data?.message || err.response?.data?.error || 'Failed to create user';
+            useStore.getState().showToast(msg, 'error');
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal">
+                <div className="modal-header">
+                    <span>Add New User</span>
+                    <button onClick={onClose} className="btn icon-btn"><X size={20}/></button>
+                </div>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label>Username</label>
+                        <input value={form.username} onChange={e=>setForm({...form, username: e.target.value})} required placeholder="e.g. john_staff" />
+                    </div>
+                    <div className="form-group">
+                        <label>Password</label>
+                        <input type="password" value={form.password} onChange={e=>setForm({...form, password: e.target.value})} required placeholder="Min 6 characters" minLength={6} />
+                    </div>
+                    <div className="form-group">
+                        <label>Role</label>
+                        <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})}>
+                            {ROLES.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex justify-between" style={{ marginTop: 20 }}>
+                        <button type="button" onClick={onClose} className="btn btn-outline">Cancel</button>
+                        <button type="submit" className="btn btn-primary">Create User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+export function UserManagement() {
+    const perm = usePermissions();
+    const { user: currentUser } = useAuth();
+    const { users, fetchUsers, updateUserRole, deleteUser } = useStore();
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [editRole, setEditRole] = useState('');
+
+    useEffect(() => {
+        if (perm.canManageUsers) fetchUsers();
+    }, []);
+
+    if (!perm.canManageUsers) return <Navigate to="/" replace />;
+
+    const startEdit = (u) => {
+        setEditingId(u.id);
+        setEditRole(u.role);
+    };
+
+    const saveRole = async (id) => {
+        try {
+            await updateUserRole(id, editRole);
+            useStore.getState().showToast('Role updated', 'success');
+        } catch (err) {
+            useStore.getState().showToast(err.message || err.response?.data?.message || 'Failed to update role', 'error');
+        }
+        setEditingId(null);
+    };
+
+    const handleDelete = async (u) => {
+        if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
+        try {
+            await deleteUser(u.id);
+            useStore.getState().showToast(`User "${u.username}" deleted`, 'info');
+        } catch (err) {
+            useStore.getState().showToast(err.message || err.response?.data?.message || 'Failed to delete user', 'error');
+        }
+    };
+
+    return (
+        <div>
+            <div className="flex justify-between items-center" style={{ marginBottom: 30 }}>
+                <div>
+                    <h2 style={{ marginBottom: 4 }}>User Management</h2>
+                    <p style={{ color: 'var(--text-light)', margin: 0 }}>Manage system users and their roles</p>
+                </div>
+                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+                    <Plus size={16}/> Add User
+                </button>
+            </div>
+
+            {/* Role Permission Summary */}
+            <div className="card-grid" style={{ padding: 0, marginBottom: 30, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                {[
+                    { role: 'admin',   label: 'Admin',   desc: 'Full control over everything' },
+                    { role: 'user',    label: 'User',    desc: 'Attendance & sales operations' },
+                ].map(({ role, label, desc }) => {
+                    const c = ROLE_COLORS[role];
+                    return (
+                        <div key={role} className="card" style={{ borderLeft: `4px solid ${c.border}`, padding: '14px 18px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                <Shield size={14} color={c.color} />
+                                <span style={{ fontWeight: 700, color: c.color }}>{label}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{desc}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8, color: 'var(--text-dark)' }}>
+                                {users.filter(u => u.role === role).length} user(s)
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="card">
+                <h3 style={{ marginBottom: 20 }}>All Users</h3>
+                <div className="table-container" style={{ margin: 0 }}>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th style={{ width: 120 }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.id}>
+                                    <td style={{ color: 'var(--text-light)', fontSize: 13 }}>{u.id}</td>
+                                    <td>
+                                        <strong>{u.username}</strong>
+                                        {u.id === currentUser?.id && (
+                                            <span style={{ marginLeft: 8, fontSize: 11, background: 'var(--primary-color)', color: 'white', padding: '1px 7px', borderRadius: 10 }}>You</span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingId === u.id ? (
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: 120, padding: '4px 8px' }}>
+                                                    {ROLES.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+                                                </select>
+                                                <button className="btn icon-btn" onClick={() => saveRole(u.id)} style={{ color: 'var(--primary-color)' }}><Check size={16}/></button>
+                                                <button className="btn icon-btn" onClick={() => setEditingId(null)} style={{ color: 'var(--text-light)' }}><X size={16}/></button>
+                                            </div>
+                                        ) : (
+                                            <RoleBadge role={u.role} />
+                                        )}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>
+                                        {u.id !== currentUser?.id && (
+                                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                                <button className="btn icon-btn" onClick={() => startEdit(u)} title="Change Role">
+                                                    <Edit2 size={15}/>
+                                                </button>
+                                                <button className="btn icon-btn" style={{ color: 'var(--alert-color)' }} onClick={() => handleDelete(u)} title="Delete User">
+                                                    <Trash2 size={15}/>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                            {users.length === 0 && (
+                                <tr><td colSpan="4" style={{ textAlign: 'center', padding: 30, color: 'var(--text-light)' }}>Loading users...</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {showAddModal && <AddUserModal onClose={() => setShowAddModal(false)} />}
+        </div>
+    );
+}
