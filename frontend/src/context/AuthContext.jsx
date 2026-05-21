@@ -36,29 +36,40 @@ export function AuthProvider({ children }) {
     const googleLogin = async (idToken) => {
         try {
             useStore.getState().resetStore();
+            localStorage.clear();
+            sessionStorage.clear();
+            
             const { data } = await api.post('/auth/google', { idToken });
             if (!data?.token) throw new Error('Invalid response from server');
+            
+            // Set initial temp token
             localStorage.setItem('token', data.token);
-            localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { username: data.username, email: data.email, role: data.role || 'user' };
-            localStorage.setItem('user', JSON.stringify(loggedInUser));
-            setUser(loggedInUser);
+            
+            return data; // { allowedRoles, user }
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Google Login failed';
             throw new Error(msg);
         }
     };
 
-    const updateRole = (newRole) => {
-        if (user) {
-            const updatedUser = { ...user, role: newRole };
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            setUser(updatedUser);
+    const selectFinalRole = async (selectedRole) => {
+        try {
+            const { data } = await api.post('/auth/select-role', { selectedRole });
+            if (!data?.token) throw new Error('Invalid response from server');
+            
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('sessionId', String(data.sessionId || ''));
+            const loggedInUser = { ...data.user, role: data.role };
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+            setUser(loggedInUser);
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Role selection failed';
+            throw new Error(msg);
         }
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, googleLogin, updateRole }}>
+        <AuthContext.Provider value={{ user, login, logout, googleLogin, selectFinalRole }}>
             {children}
         </AuthContext.Provider>
     );
