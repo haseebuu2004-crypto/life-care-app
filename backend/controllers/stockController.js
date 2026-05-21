@@ -25,43 +25,38 @@ exports.addStock = (req, res) => {
         const volumePoint = Number(req.body.volumePoint) || 0;
         const quantity = Number(req.body.quantity) || 0;
 
-        if (!productName) return res.status(400).json({ success: false, message: "Product name is required" });
+        if (!productName || productName.trim() === '') {
+            return res.status(400).json({ success: false, message: "Product name is required" });
+        }
 
-        const normName = productName.trim().toLowerCase();
+        const normName = productName.trim();
+        const normNameLower = normName.toLowerCase();
         const finalFlavor = (hasFlavours && flavour.trim() !== '') ? flavour.trim() : 'Base';
+        const finalFlavorLower = finalFlavor.toLowerCase();
         const ownerId = req.user.id;
         
         db.serialize(() => {
-            db.get('SELECT id FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normName, ownerId], (err, product) => {
+            // Use case-insensitive check for product
+            db.get('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normNameLower, ownerId], (err, product) => {
                 if (err) {
                     console.error('SQL Error (SELECT products):', err);
                     return res.status(500).json({ success: false, message: 'Database error finding product: ' + err.message });
                 }
                 
                 const handleStock = (productId) => {
-                    db.get('SELECT id FROM product_variants WHERE product_id = ? AND LOWER(TRIM(flavor)) = ? AND owner_id = ?', [productId, finalFlavor.toLowerCase(), ownerId], (err, pv) => {
+                    db.get('SELECT id FROM product_variants WHERE product_id = ? AND LOWER(TRIM(flavor)) = ? AND owner_id = ?', [productId, finalFlavorLower, ownerId], (err, pv) => {
                         if (err) {
                             console.error('SQL Error (SELECT variant):', err);
                             return res.status(500).json({ success: false, message: 'Database error finding variant: ' + err.message });
                         }
                         if (pv) {
-                            db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [quantity, pv.id, ownerId], function(err) {
-                                if (err) {
-                                    console.error('SQL Error (UPDATE stock):', err);
-                                    return res.status(500).json({ success: false, message: 'Database error updating stock: ' + err.message });
-                                }
-                                if (this.changes === 0) {
-                                    // Stock record doesn't exist yet for this variant, create it
-                                    db.run('INSERT INTO stock (variant_id, qty, owner_id) VALUES (?, ?, ?)', [pv.id, quantity, ownerId], function(insertErr) {
-                                        if (insertErr) {
-                                            console.error('SQL Error (INSERT missing stock):', insertErr);
-                                            return res.status(500).json({ success: false, message: 'Database error creating stock: ' + insertErr.message });
-                                        }
-                                        res.status(200).json({ success: true, data: { id: pv.id, message: "Stock created" } });
-                                    });
-                                } else {
-                                    res.status(200).json({ success: true, data: { id: pv.id, message: "Stock updated" } });
-                                }
+                            // The user explicitly wants to treat duplicates as an error during creation,
+                            // rather than auto-updating the stock quantity silently.
+                            return res.status(400).json({ 
+                                success: false, 
+                                message: hasFlavours 
+                                    ? `Product "${normName}" with flavour "${finalFlavor}" already exists.` 
+                                    : `Product "${normName}" already exists.` 
                             });
                         } else {
                             db.run('INSERT INTO product_variants (product_id, flavor, vp, sp, owner_id) VALUES (?, ?, ?, ?, ?)',
@@ -86,9 +81,14 @@ exports.addStock = (req, res) => {
                 if (product) {
                     handleStock(product.id);
                 } else {
-                    db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [productName.trim(), ownerId], function(err) {
+                    // To prevent global UNIQUE constraint failures from the old schema (if it wasn't dropped),
+                    // we should handle potential INSERT errors safely.
+                    db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [normName, ownerId], function(err) {
                         if (err) {
                             console.error('SQL Error (INSERT product):', err);
+                            if (err.message.includes('UNIQUE constraint failed')) {
+                                return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
+                            }
                             return res.status(500).json({ success: false, message: 'Database error creating product: ' + err.message });
                         }
                         handleStock(this.lastID);
