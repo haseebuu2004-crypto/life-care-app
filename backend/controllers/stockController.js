@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getOwnerId } = require('../middleware/authMiddleware');
 
 exports.getStock = (req, res) => {
     try {
@@ -6,7 +7,7 @@ exports.getStock = (req, res) => {
                 FROM product_variants pv 
                 JOIN products p ON pv.product_id = p.id 
                 LEFT JOIN stock s ON s.variant_id = pv.id 
-                WHERE pv.is_active = 1 AND p.is_active = 1 AND p.owner_id = ?`, [req.user.id], (err, rows) => {
+                WHERE pv.is_active = 1 AND p.is_active = 1 AND p.owner_id = ?`, [getOwnerId(req)], (err, rows) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             res.json({ success: true, data: rows });
         });
@@ -33,7 +34,7 @@ exports.addStock = (req, res) => {
         const normNameLower = normName.toLowerCase();
         const finalFlavor = (hasFlavours && flavour.trim() !== '') ? flavour.trim() : 'Base';
         const finalFlavorLower = finalFlavor.toLowerCase();
-        const ownerId = req.user.id;
+        const ownerId = getOwnerId(req);
         
         db.serialize(() => {
             // Use case-insensitive check for product
@@ -106,7 +107,7 @@ exports.increaseStock = (req, res) => {
     try {
         const { qty_add } = req.body;
         if (!qty_add || qty_add < 0) return res.status(400).json({ success: false, message: "Cannot deduct stock directly" });
-        db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [qty_add, req.params.id, req.user.id], function(err) {
+        db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [qty_add, req.params.id, getOwnerId(req)], function(err) {
             if (err) return res.status(500).json({ success: false, message: err.message });
             res.json({ success: true, data: null });
         });
@@ -124,7 +125,7 @@ exports.updateStockQuantity = (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid quantity. Must be 0 or greater." });
         }
         
-        db.run('UPDATE stock SET qty = ? WHERE variant_id = ? AND owner_id = ?', [qty, req.params.id, req.user.id], function(err) {
+        db.run('UPDATE stock SET qty = ? WHERE variant_id = ? AND owner_id = ?', [qty, req.params.id, getOwnerId(req)], function(err) {
             if (err) return res.status(500).json({ success: false, message: err.message });
             res.json({ success: true, data: null, message: "Stock updated successfully." });
         });
@@ -135,15 +136,15 @@ exports.updateStockQuantity = (req, res) => {
 
 exports.deleteStock = (req, res) => {
     try {
-        db.get('SELECT COUNT(*) as count FROM sale_items WHERE variant_id = ? AND owner_id = ?', [req.params.id, req.user.id], (err, row) => {
+        db.get('SELECT COUNT(*) as count FROM sale_items WHERE variant_id = ? AND owner_id = ?', [req.params.id, getOwnerId(req)], (err, row) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             if (row && row.count > 0) {
-                db.run('UPDATE product_variants SET is_active = 0 WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id], function(err) {
+                db.run('UPDATE product_variants SET is_active = 0 WHERE id = ? AND owner_id = ?', [req.params.id, getOwnerId(req)], function(err) {
                     if (err) return res.status(500).json({ success: false, message: err.message });
                     res.json({ success: true, data: null, message: "Flavour soft deleted as it is used in sales." });
                 });
             } else {
-                db.run('DELETE FROM product_variants WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id], function(err) {
+                db.run('DELETE FROM product_variants WHERE id = ? AND owner_id = ?', [req.params.id, getOwnerId(req)], function(err) {
                     if (err) return res.status(500).json({ success: false, message: err.message });
                     res.json({ success: true, data: null, message: "Flavour permanently deleted." });
                 });

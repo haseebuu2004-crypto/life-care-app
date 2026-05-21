@@ -1,8 +1,9 @@
 const attendanceService = require('../services/attendanceService');
+const { getOwnerId } = require('../middleware/authMiddleware');
 
 exports.getAttendance = async (req, res) => {
     try {
-        const rows = await attendanceService.getAllAttendance(req.user.id);
+        const rows = await attendanceService.getAllAttendance(getOwnerId(req));
         res.json({ success: true, data: rows });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -28,7 +29,7 @@ exports.markAttendance = async (req, res) => {
             }
         }
 
-        await attendanceService.markAttendanceRecord(date, normalizedName, status, finalShakeProfit, req.user.id);
+        await attendanceService.markAttendanceRecord(date, normalizedName, status, finalShakeProfit, getOwnerId(req));
         res.json({ success: true, data: { message: 'Attendance logged successfully' } });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -37,7 +38,7 @@ exports.markAttendance = async (req, res) => {
 
 exports.deleteAttendance = async (req, res) => {
     try {
-        await attendanceService.deleteAttendanceRecord(req.params.id, req.user.id);
+        await attendanceService.deleteAttendanceRecord(req.params.id, getOwnerId(req));
         res.json({ success: true, data: null });
     } catch (error) {
         if (error.message === "Record not found") {
