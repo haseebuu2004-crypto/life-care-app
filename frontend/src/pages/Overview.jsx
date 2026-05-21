@@ -23,59 +23,19 @@ function OverviewInner() {
     const perm = usePermissions();
     const [isExporting, setIsExporting] = useState(false);
 
-    if (!perm.canViewOverview) {
-        return <Navigate to="/" replace />;
-    }
-
-    const handleReset = async () => {
-        const confirm1 = window.confirm("Are you sure? This will delete ALL data permanently.");
-        if (!confirm1) return;
-        const confirm2 = window.confirm("FINAL WARNING: All stock, sales, attendance and product data will be erased. This action CANNOT be undone. Proceed?");
-        if (!confirm2) return;
-
-        try {
-            await resetData();
-            showToast("All data successfully reset", "success");
-        } catch (err) {
-            showToast(err.message || "Failed to reset data", "error");
-        }
-    };
-
-    const handleExport = async (type) => {
-        setIsExporting(true);
-        try {
-            await exportReport(type);
-            showToast(`Report exported successfully`, "success");
-        } catch (err) {
-            showToast(err.message || "Failed to export report", "error");
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
-    // Show loading state while data is being fetched
-    if (isLoading && !dashboardStats) {
-        return (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-light)' }}>
-                <div className="loader" style={{ margin: '0 auto 20px' }}></div>
-                Loading overview data...
-            </div>
-        );
-    }
-
     const { lowStock, monthlySalesInfo, topSellerName, customerProfitArr, totalShakeProfit, shakeProfitArr, totalSalesProfit, totalVpSold, totalStockValue } = useMemo(() => {
         // PERFORMANCE: If we have pre-calculated stats from backend, use them directly
         if (dashboardStats) {
             return {
                 lowStock: dashboardStats.lowStockItems || [],
                 monthlySalesInfo: dashboardStats.monthlyProductSales || [],
-                topSellerName: dashboardStats.totals.topSeller || 'N/A',
+                topSellerName: dashboardStats.totals?.topSeller || 'N/A',
                 customerProfitArr: dashboardStats.topCustomers || [],
-                totalShakeProfit: dashboardStats.totals.totalShakeProfit || 0,
+                totalShakeProfit: dashboardStats.totals?.totalShakeProfit || 0,
                 shakeProfitArr: dashboardStats.shakeProfitDetails || [],
-                totalSalesProfit: dashboardStats.totals.totalSalesProfit || 0,
-                totalVpSold: dashboardStats.totals.totalVpSold || 0,
-                totalStockValue: dashboardStats.totals.totalStockValue || 0,
+                totalSalesProfit: dashboardStats.totals?.totalSalesProfit || 0,
+                totalVpSold: dashboardStats.totals?.totalVpSold || 0,
+                totalStockValue: dashboardStats.totals?.totalStockValue || 0,
             };
         }
 
@@ -155,6 +115,46 @@ function OverviewInner() {
             totalStockValue: stockVal,
         };
     }, [stock, sales, attendance, dashboardStats]);
+
+    if (!perm.canViewOverview) {
+        return <Navigate to="/" replace />;
+    }
+
+    const handleReset = async () => {
+        const confirm1 = window.confirm("Are you sure? This will delete ALL data permanently.");
+        if (!confirm1) return;
+        const confirm2 = window.confirm("FINAL WARNING: All stock, sales, attendance and product data will be erased. This action CANNOT be undone. Proceed?");
+        if (!confirm2) return;
+
+        try {
+            await resetData();
+            showToast("All data successfully reset", "success");
+        } catch (err) {
+            showToast(err.message || "Failed to reset data", "error");
+        }
+    };
+
+    const handleExport = async (type) => {
+        setIsExporting(true);
+        try {
+            await exportReport(type);
+            showToast(`Report exported successfully`, "success");
+        } catch (err) {
+            showToast(err.message || "Failed to export report", "error");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    // Show loading state while data is being fetched
+    if (isLoading && !dashboardStats) {
+        return (
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-light)' }}>
+                <div className="loader" style={{ margin: '0 auto 20px' }}></div>
+                Loading overview data...
+            </div>
+        );
+    }
 
     return (
         <div>

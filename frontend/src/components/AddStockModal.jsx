@@ -29,7 +29,7 @@ export function AddStockModal({ onClose }) {
             useStore.getState().showToast("Stock added successfully", "success");
             onClose();
         } catch (err) {
-            const errorMsg = err.response?.data?.message || err.response?.data?.error || "Failed to add stock.";
+            const errorMsg = err.message || "Failed to add stock.";
             useStore.getState().showToast(errorMsg, "error");
         }
     };
