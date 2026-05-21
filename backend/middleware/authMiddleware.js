@@ -16,4 +16,10 @@ function authenticateToken(req, res, next) {
     });
 }
 
-module.exports = { authenticateToken, SECRET };
+const getOwnerId = (req) => {
+    // Force use of Google email for strict, permanent SaaS workspace mapping.
+    // Fallback to username for local default admin/user accounts.
+    return req.user.email ? req.user.email.trim().toLowerCase() : (req.user.username || String(req.user.id));
+};
+
+module.exports = { authenticateToken, SECRET, getOwnerId };

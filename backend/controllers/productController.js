@@ -1,8 +1,10 @@
 const db = require('../config/db');
+const { getOwnerId } = require('../middleware/authMiddleware');
 
 exports.getProducts = (req, res) => {
     try {
-        db.all('SELECT * FROM products WHERE is_active = 1 AND owner_id = ?', [req.user.id], (err, rows) => {
+        const ownerId = getOwnerId(req);
+        db.all('SELECT * FROM products WHERE is_active = 1 AND owner_id = ?', [ownerId], (err, rows) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             res.json({ success: true, data: rows });
         });
@@ -18,15 +20,16 @@ exports.createProduct = (req, res) => {
         
         const normName = name.trim();
         const normNameLower = normName.toLowerCase();
+        const ownerId = getOwnerId(req);
         
-        db.get('SELECT id FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normNameLower, req.user.id], (err, row) => {
+        db.get('SELECT id FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normNameLower, ownerId], (err, row) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             
             if (row) {
                 return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
             }
             
-            db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [normName, req.user.id], function(err) {
+            db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [normName, ownerId], function(err) {
                 if (err) {
                     if (err.message.includes('UNIQUE constraint failed')) {
                         return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
@@ -43,15 +46,16 @@ exports.createProduct = (req, res) => {
 
 exports.deleteProduct = (req, res) => {
     try {
-        db.get('SELECT COUNT(*) as count FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE pv.product_id = ? AND pv.owner_id = ?', [req.params.id, req.user.id], (err, row) => {
+        const ownerId = getOwnerId(req);
+        db.get('SELECT COUNT(*) as count FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE pv.product_id = ? AND pv.owner_id = ?', [req.params.id, ownerId], (err, row) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             if (row && row.count > 0) {
-                db.run('UPDATE products SET is_active = 0 WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id], function(err) {
+                db.run('UPDATE products SET is_active = 0 WHERE id = ? AND owner_id = ?', [req.params.id, ownerId], function(err) {
                     if (err) return res.status(500).json({ success: false, message: err.message });
                     res.json({ success: true, data: null, message: "Product soft deleted as it is used in sales." });
                 });
             } else {
-                db.run('DELETE FROM products WHERE id = ? AND owner_id = ?', [req.params.id, req.user.id], function(err) {
+                db.run('DELETE FROM products WHERE id = ? AND owner_id = ?', [req.params.id, ownerId], function(err) {
                     if (err) return res.status(500).json({ success: false, message: err.message });
                     res.json({ success: true, data: null, message: "Product permanently deleted." });
                 });

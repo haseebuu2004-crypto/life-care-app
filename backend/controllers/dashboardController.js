@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getOwnerId } = require('../middleware/authMiddleware');
 
 exports.getStats = (req, res) => {
     try {
@@ -19,7 +20,7 @@ exports.getStats = (req, res) => {
 
         const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        const ownerId = req.user.id;
+        const ownerId = getOwnerId(req);
 
         db.serialize(() => {
             // 1. Totals (Sales & VP)
@@ -104,7 +105,7 @@ exports.getStats = (req, res) => {
 
 exports.resetData = (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const ownerId = getOwnerId(req);
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
             db.run('DELETE FROM sale_items WHERE owner_id = ?', [ownerId]);
@@ -128,7 +129,7 @@ exports.resetData = (req, res) => {
 
 exports.exportReport = async (req, res) => {
     const type = req.query.type;
-    const ownerId = req.user.id;
+    const ownerId = getOwnerId(req);
     if (!['sales', 'attendance', 'summary'].includes(type)) {
         return res.status(400).json({ success: false, message: 'Invalid report type' });
     }
@@ -347,7 +348,7 @@ exports.exportReport = async (req, res) => {
 exports.clearAttendanceData = (req, res) => {
     try {
         const { month } = req.body;
-        const ownerId = req.user.id;
+        const ownerId = getOwnerId(req);
         
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
@@ -382,7 +383,7 @@ exports.clearAttendanceData = (req, res) => {
 exports.clearSalesData = (req, res) => {
     try {
         const { month } = req.body;
-        const ownerId = req.user.id;
+        const ownerId = getOwnerId(req);
         
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
