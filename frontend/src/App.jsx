@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import useStore from './store/useStore';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
+import { isAdminEmail } from './utils/adminHelper';
 
 // Performance: Lazy loading pages to reduce initial bundle size
 const Overview = lazy(() => import('./pages/Overview').then(m => ({ default: m.Overview })));
@@ -105,7 +106,7 @@ function SelectRole() {
 
     const handleRoleSelect = (role) => {
         if (role === 'admin') {
-            if (user?.role === 'admin') {
+            if (user?.role === 'admin' || isAdminEmail(user?.email)) {
                 nav('/overview');
             } else {
                 setError('Admin access not allowed');
