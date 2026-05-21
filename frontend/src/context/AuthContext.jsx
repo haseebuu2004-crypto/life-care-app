@@ -52,9 +52,9 @@ export function AuthProvider({ children }) {
         }
     };
 
-    const selectFinalRole = async (selectedRole) => {
+    const selectFinalRole = async (selectedRole, password) => {
         try {
-            const { data } = await api.post('/auth/select-role', { selectedRole });
+            const { data } = await api.post('/auth/select-role', { selectedRole, password });
             if (!data?.token) throw new Error('Invalid response from server');
             
             localStorage.setItem('token', data.token);

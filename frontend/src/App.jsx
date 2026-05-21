@@ -102,25 +102,37 @@ function SelectRole() {
     const allowedRoles = location.state?.allowedRoles || [];
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    
+    // Password Modal State
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [selectedRoleForPassword, setSelectedRoleForPassword] = useState(null);
+    const [passwordInput, setPasswordInput] = useState('');
 
     useEffect(() => {
         if (!allowedRoles.length) nav('/login');
     }, [allowedRoles, nav]);
 
-    const handleRoleSelect = async (role) => {
+    const initiateRoleSelect = (role) => {
+        setSelectedRoleForPassword(role);
+        setPasswordInput('');
+        setError('');
+        setShowPasswordModal(true);
+    };
+
+    const handleRoleSelect = async () => {
+        if (!selectedRoleForPassword) return;
         setError('');
         setLoading(true);
         try {
-            await selectFinalRole(role);
-            if (role === 'admin') {
+            await selectFinalRole(selectedRoleForPassword, passwordInput);
+            if (selectedRoleForPassword === 'admin') {
                 nav('/overview');
             } else {
                 nav('/sales');
             }
         } catch (err) {
             setError(err.message || 'Failed to assign role');
-        } finally {
-            setLoading(false);
+            setLoading(false); // Only stop loading if error, otherwise let navigation happen
         }
     };
 
@@ -128,32 +140,80 @@ function SelectRole() {
 
     return (
         <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
-            <div className="card" style={{ width: 400, padding: 40, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
+            <div className="card" style={{ width: 400, padding: 40, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center', position: 'relative' }}>
                 <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>Select Role</h2>
                 <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Choose how you want to view your workspace.</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                     {allowedRoles.includes('admin') && (
                         <button 
-                            onClick={() => handleRoleSelect('admin')}
-                            disabled={loading}
+                            onClick={() => initiateRoleSelect('admin')}
                             className="btn btn-primary"
                             style={{ padding: '14px', fontSize: 16 }}
                         >
-                            {loading ? 'Setting up...' : 'Admin'}
+                            Admin
                         </button>
                     )}
                     {allowedRoles.includes('user') && (
                         <button 
-                            onClick={() => handleRoleSelect('user')}
-                            disabled={loading}
+                            onClick={() => initiateRoleSelect('user')}
                             className="btn btn-outline"
                             style={{ padding: '14px', fontSize: 16 }}
                         >
-                            {loading ? 'Setting up...' : 'User'}
+                            User
                         </button>
                     )}
                 </div>
+
+                {showPasswordModal && (
+                    <div style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                        background: 'rgba(255,255,255,0.95)', display: 'flex', 
+                        flexDirection: 'column', justifyContent: 'center', padding: 30, borderRadius: 12
+                    }}>
+                        <h3 style={{ margin: '0 0 15px', color: '#1e293b' }}>
+                            Enter {selectedRoleForPassword === 'admin' ? 'Admin' : 'User'} Password
+                        </h3>
+                        
+                        {error && (
+                            <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '10px', borderRadius: 8, marginBottom: 15, fontSize: 13 }}>
+                                {error}
+                            </div>
+                        )}
+
+                        <input 
+                            type="password" 
+                            value={passwordInput}
+                            onChange={(e) => setPasswordInput(e.target.value)}
+                            placeholder="Password"
+                            style={{ padding: '12px', borderRadius: 8, border: '1px solid #cbd5e1', marginBottom: 15, fontSize: 16 }}
+                            onKeyDown={(e) => e.key === 'Enter' && handleRoleSelect()}
+                            autoFocus
+                        />
+
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button 
+                                onClick={() => {
+                                    setShowPasswordModal(false);
+                                    setError('');
+                                }}
+                                className="btn btn-outline"
+                                style={{ flex: 1, padding: '12px' }}
+                                disabled={loading}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleRoleSelect}
+                                className="btn btn-primary"
+                                style={{ flex: 1, padding: '12px' }}
+                                disabled={loading || !passwordInput}
+                            >
+                                {loading ? 'Verifying...' : 'Submit'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
