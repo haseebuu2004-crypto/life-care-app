@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { username: data.username, email: data.email };
+            const loggedInUser = { username: data.username, email: data.email, role: data.role || 'user' };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);
         } catch (error) {
@@ -49,8 +49,16 @@ export function AuthProvider({ children }) {
         }
     };
 
+    const updateRole = (newRole) => {
+        if (user) {
+            const updatedUser = { ...user, role: newRole };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            setUser(updatedUser);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, googleLogin }}>
+        <AuthContext.Provider value={{ user, login, logout, googleLogin, updateRole }}>
             {children}
         </AuthContext.Provider>
     );

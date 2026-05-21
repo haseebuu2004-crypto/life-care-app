@@ -96,7 +96,7 @@ function Login() {
 }
 
 function SelectRole() {
-    const { user } = useAuth();
+    const { user, updateRole } = useAuth();
     const nav = useNavigate();
     const [error, setError] = useState('');
 
@@ -106,8 +106,14 @@ function SelectRole() {
 
     const handleRoleSelect = (role) => {
         if (role === 'admin') {
-            nav('/overview');
+            if (isAdminEmail(user?.email)) {
+                updateRole('admin');
+                nav('/overview');
+            } else {
+                setError('Admin access not allowed');
+            }
         } else {
+            updateRole('user');
             nav('/sales');
         }
     };
@@ -117,7 +123,7 @@ function SelectRole() {
     return (
         <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
             <div className="card" style={{ width: 400, padding: 40, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
-                <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>Select Layout Mode</h2>
+                <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>Select Role</h2>
                 <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Choose how you want to view your workspace.</p>
 
                 {error && (
@@ -157,6 +163,17 @@ function ProtectedRoute({ children }) {
     return <Layout>{children}</Layout>;
 }
 
+function AdminRoute({ children }) {
+    const { user } = useAuth();
+    const fetchData = useStore(s => s.fetchData);
+    useEffect(() => {
+        if (user && user.role === 'admin') fetchData();
+    }, [user, fetchData]);
+    if (!user) return <Navigate to="/login" replace />;
+    if (user.role !== 'admin') return <Navigate to="/" replace />;
+    return <Layout>{children}</Layout>;
+}
+
 function App() {
     const { user } = useAuth();
     
@@ -167,13 +184,13 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/select-role" element={<SelectRole />} />
                     <Route path="/" element={<Navigate to={user?.role === 'admin' ? '/overview' : '/sales'} replace />} />
-                    <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
-                    <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-                    <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                    <Route path="/overview" element={<AdminRoute><Overview /></AdminRoute>} />
+                    <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+                    <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
                     <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
                     <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
                     <Route path="/stock" element={<ProtectedRoute><Stock /></ProtectedRoute>} />
-                    <Route path="/data-management" element={<ProtectedRoute><DataManagement /></ProtectedRoute>} />
+                    <Route path="/data-management" element={<AdminRoute><DataManagement /></AdminRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Suspense>
