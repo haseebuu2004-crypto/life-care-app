@@ -110,7 +110,7 @@ exports.googleLogin = async (req, res) => {
 
 exports.selectRole = (req, res) => {
     try {
-        const { selectedRole } = req.body;
+        const { selectedRole, password } = req.body;
         const user = req.user; // from authenticateToken middleware
 
         if (!user || !user.email) {
@@ -122,6 +122,19 @@ exports.selectRole = (req, res) => {
 
         if (!allowedRoles.includes(selectedRole)) {
             return res.status(403).json({ success: false, message: "Role not permitted" });
+        }
+
+        // Verify role password
+        if (selectedRole === 'admin') {
+            const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+            if (password !== adminPassword) {
+                return res.status(401).json({ success: false, message: "Incorrect Admin Password" });
+            }
+        } else if (selectedRole === 'user') {
+            const userPassword = process.env.USER_PASSWORD || 'user123';
+            if (password !== userPassword) {
+                return res.status(401).json({ success: false, message: "Incorrect User Password" });
+            }
         }
 
         // Issue final token with the selected role
