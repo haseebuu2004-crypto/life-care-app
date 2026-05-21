@@ -59,6 +59,8 @@ export function AuthProvider({ children }) {
             
             localStorage.setItem('token', data.token);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
+            localStorage.setItem('role', data.role);
+            
             const loggedInUser = { ...data.user, role: data.role };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);

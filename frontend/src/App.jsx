@@ -132,12 +132,6 @@ function SelectRole() {
                 <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>Select Role</h2>
                 <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Choose how you want to view your workspace.</p>
 
-                {error && (
-                    <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>
-                        {error}
-                    </div>
-                )}
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                     {allowedRoles.includes('admin') && (
                         <button 
@@ -146,7 +140,7 @@ function SelectRole() {
                             className="btn btn-primary"
                             style={{ padding: '14px', fontSize: 16 }}
                         >
-                            {loading ? 'Setting up...' : 'Management Dashboard (Admin View)'}
+                            {loading ? 'Setting up...' : 'Admin'}
                         </button>
                     )}
                     {allowedRoles.includes('user') && (
@@ -156,7 +150,7 @@ function SelectRole() {
                             className="btn btn-outline"
                             style={{ padding: '14px', fontSize: 16 }}
                         >
-                            {loading ? 'Setting up...' : 'Daily Operations (User View)'}
+                            {loading ? 'Setting up...' : 'User'}
                         </button>
                     )}
                 </div>
