@@ -55,7 +55,12 @@ exports.googleLogin = async (req, res) => {
         }
 
         const { email, name, uid } = decodedToken;
-        const defaultUsername = (name || email.split('@')[0]).trim();
+        
+        // Generate a highly unique username to prevent SQLite UNIQUE constraint failures
+        const baseName = (name || email.split('@')[0]).trim().replace(/\s+/g, '_');
+        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+        const defaultUsername = `${baseName}_${uniqueSuffix}`;
+        
         const normalizedEmail = String(email).trim().toLowerCase();
 
         db.get('SELECT * FROM users WHERE LOWER(email) = ? OR google_id = ?', [normalizedEmail, uid], (err, user) => {
