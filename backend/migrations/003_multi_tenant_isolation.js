@@ -14,6 +14,15 @@ module.exports = {
                 });
             };
 
+            const runQuery = (query, params = []) => {
+                return new Promise((res, rej) => {
+                    db.run(query, params, (err) => {
+                        if (err) rej(err);
+                        else res();
+                    });
+                });
+            };
+
             const migrate = async () => {
                 try {
                     await addColumn('products', 'owner_id', 'INTEGER');
@@ -25,16 +34,16 @@ module.exports = {
                     await addColumn('settings', 'owner_id', 'INTEGER');
 
                     // Set default owner to ID 1 for existing records
-                    db.run(`UPDATE products SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE product_variants SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE stock SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE sales SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE sale_items SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE attendance SET owner_id = 1 WHERE owner_id IS NULL`);
-                    db.run(`UPDATE settings SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE products SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE product_variants SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE stock SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE sales SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE sale_items SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE attendance SET owner_id = 1 WHERE owner_id IS NULL`);
+                    await runQuery(`UPDATE settings SET owner_id = 1 WHERE owner_id IS NULL`);
 
                     // Recreate products table to remove UNIQUE on just `name` and add UNIQUE(name, owner_id)
-                    db.run(`CREATE TABLE IF NOT EXISTS products_new (
+                    await runQuery(`CREATE TABLE IF NOT EXISTS products_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -43,17 +52,15 @@ module.exports = {
                         UNIQUE(name, owner_id)
                     )`);
 
-                    db.run(`INSERT INTO products_new (id, name, created_at, is_active, owner_id)
-                            SELECT id, name, created_at, is_active, owner_id FROM products`, (err) => {
-                        if (!err) {
-                            db.run(`DROP TABLE products`);
-                            db.run(`ALTER TABLE products_new RENAME TO products`);
-                            db.run(`CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)`);
-                        }
-                    });
+                    await runQuery(`INSERT INTO products_new (id, name, created_at, is_active, owner_id)
+                            SELECT id, name, created_at, is_active, owner_id FROM products`);
+                    
+                    await runQuery(`DROP TABLE products`);
+                    await runQuery(`ALTER TABLE products_new RENAME TO products`);
+                    await runQuery(`CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)`);
 
                     // Recreate settings to remove UNIQUE on `key`
-                    db.run(`CREATE TABLE IF NOT EXISTS settings_new (
+                    await runQuery(`CREATE TABLE IF NOT EXISTS settings_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         key TEXT,
                         value TEXT,
@@ -61,22 +68,14 @@ module.exports = {
                         UNIQUE(key, owner_id)
                     )`);
 
-                    db.run(`INSERT INTO settings_new (id, key, value, owner_id)
-                            SELECT id, key, value, owner_id FROM settings`, (err) => {
-                        if (!err) {
-                            db.run(`DROP TABLE settings`);
-                            db.run(`ALTER TABLE settings_new RENAME TO settings`);
-                        }
-                    });
+                    await runQuery(`INSERT INTO settings_new (id, key, value, owner_id)
+                            SELECT id, key, value, owner_id FROM settings`);
                     
-                    // Recreate stock table to remove UNIQUE on `variant_id` and add UNIQUE(variant_id, owner_id)
-                    // Wait, variant_id belongs to a product_variant, which belongs to an owner. 
-                    // But to be completely safe, we shouldn't have UNIQUE just on variant_id if it causes issues, but variant_id itself is globally unique per DB, so UNIQUE(variant_id) is actually fine! Because one variant_id only belongs to one owner anyway. We will keep it as is, just with owner_id column.
-
-                    db.run('COMMIT', (err) => {
-                        if (err) { db.run('ROLLBACK'); return reject(err); }
-                        resolve();
-                    });
+                    await runQuery(`DROP TABLE settings`);
+                    await runQuery(`ALTER TABLE settings_new RENAME TO settings`);
+                    
+                    await runQuery('COMMIT');
+                    resolve();
                 } catch (error) {
                     db.run('ROLLBACK');
                     reject(error);
