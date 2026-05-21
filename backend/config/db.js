@@ -47,9 +47,11 @@ function createTables() {
         // Products Table (Base Products)
         db.run(`CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
+            name TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            is_active INTEGER DEFAULT 1
+            is_active INTEGER DEFAULT 1,
+            owner_id INTEGER,
+            UNIQUE(name, owner_id)
         )`, () => {
             db.run("ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1", () => {});
         });
@@ -62,6 +64,7 @@ function createTables() {
             vp REAL DEFAULT 0,
             sp REAL DEFAULT 0,
             is_active INTEGER DEFAULT 1,
+            owner_id INTEGER,
             FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
         )`);
 
@@ -70,6 +73,7 @@ function createTables() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             variant_id INTEGER UNIQUE,
             qty INTEGER DEFAULT 0,
+            owner_id INTEGER,
             FOREIGN KEY(variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
         )`);
 
@@ -79,7 +83,8 @@ function createTables() {
             date TEXT,
             customer TEXT,
             total_amount REAL DEFAULT 0,
-            total_profit REAL DEFAULT 0
+            total_profit REAL DEFAULT 0,
+            owner_id INTEGER
         )`);
 
         // Sale Items Table
@@ -91,6 +96,7 @@ function createTables() {
             sale_price REAL,
             total_amount REAL,
             profit REAL,
+            owner_id INTEGER,
             FOREIGN KEY(sale_id) REFERENCES sales(id) ON DELETE CASCADE,
             FOREIGN KEY(variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
         )`);
@@ -98,8 +104,10 @@ function createTables() {
         // Settings Table
         db.run(`CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT UNIQUE,
-            value TEXT
+            key TEXT,
+            value TEXT,
+            owner_id INTEGER,
+            UNIQUE(key, owner_id)
         )`);
 
         // Attendance Table
@@ -109,7 +117,8 @@ function createTables() {
             name TEXT,
             status TEXT,
             others_deduction REAL DEFAULT 0,
-            shake_profit REAL DEFAULT 0
+            shake_profit REAL DEFAULT 0,
+            owner_id INTEGER
         )`, () => {
             db.run("ALTER TABLE attendance ADD COLUMN others_deduction REAL DEFAULT 0", () => {});
             db.run("ALTER TABLE attendance ADD COLUMN shake_profit REAL DEFAULT 0", () => {});

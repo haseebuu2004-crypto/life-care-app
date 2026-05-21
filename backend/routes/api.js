@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 
 const { authenticateToken } = require('../middleware/authMiddleware');
-const { authorizeRole, ADMIN_ONLY, ALL_ROLES } = require('../middleware/roleMiddleware');
 
 const authController = require('../controllers/authController');
 const userController = require('../controllers/userController');
@@ -14,50 +13,50 @@ const dashboardController = require('../controllers/dashboardController');
 
 // Dashboard Stats
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);
-router.delete('/system/reset', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.resetData);
-router.get('/reports/export', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.exportReport);
+router.delete('/system/reset', authenticateToken, dashboardController.resetData);
+router.get('/reports/export', authenticateToken, dashboardController.exportReport);
 
 // Data Management
-router.delete('/data-management/attendance', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.clearAttendanceData);
-router.delete('/data-management/sales', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.clearSalesData);
+router.delete('/data-management/attendance', authenticateToken, dashboardController.clearAttendanceData);
+router.delete('/data-management/sales', authenticateToken, dashboardController.clearSalesData);
 
 // Protect Profit APIs as requested
-router.get('/dashboard/profit', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.getProfit || ((req, res) => res.json({})));
-router.get('/dashboard/shake-profit', authenticateToken, authorizeRole(ADMIN_ONLY), dashboardController.getShakeProfit || ((req, res) => res.json({})));
+router.get('/dashboard/profit', authenticateToken, dashboardController.getProfit || ((req, res) => res.json({})));
+router.get('/dashboard/shake-profit', authenticateToken, dashboardController.getShakeProfit || ((req, res) => res.json({})));
 
 // Auth
 router.post('/auth/login', authController.login);
 router.post('/auth/google', authController.googleLogin);
 router.post('/auth/logout', authenticateToken, authController.logout);
-router.get('/login-history', authenticateToken, authorizeRole(ADMIN_ONLY), authController.getLoginHistory);
+router.get('/login-history', authenticateToken, authController.getLoginHistory);
 
 // User Management (Admin only)
-router.get('/users', authenticateToken, authorizeRole(ADMIN_ONLY), userController.getUsers);
-router.post('/users', authenticateToken, authorizeRole(ADMIN_ONLY), userController.createUser);
-router.put('/users/:id/role', authenticateToken, authorizeRole(ADMIN_ONLY), userController.updateUserRole);
-router.delete('/users/:id', authenticateToken, authorizeRole(ADMIN_ONLY), userController.deleteUser);
+router.get('/users', authenticateToken, userController.getUsers);
+router.post('/users', authenticateToken, userController.createUser);
+router.put('/users/:id/role', authenticateToken, userController.updateUserRole);
+router.delete('/users/:id', authenticateToken, userController.deleteUser);
 
 // Products
 router.get('/products', authenticateToken, productController.getProducts); // readable by all
-router.post('/products', authenticateToken, authorizeRole(ADMIN_ONLY), productController.createProduct);
-router.delete('/products/:id', authenticateToken, authorizeRole(ADMIN_ONLY), productController.deleteProduct);
+router.post('/products', authenticateToken, productController.createProduct);
+router.delete('/products/:id', authenticateToken, productController.deleteProduct);
 
 // Stock
-router.get('/stock', authenticateToken, authorizeRole(ALL_ROLES), stockController.getStock);
-router.post('/stock', authenticateToken, authorizeRole(ADMIN_ONLY), stockController.addStock);
-router.put('/stock/:id/add', authenticateToken, authorizeRole(ADMIN_ONLY), stockController.increaseStock);
-router.patch('/stock/:id', authenticateToken, authorizeRole(ADMIN_ONLY), stockController.updateStockQuantity);
-router.delete('/stock/:id', authenticateToken, authorizeRole(ADMIN_ONLY), stockController.deleteStock);
+router.get('/stock', authenticateToken, stockController.getStock);
+router.post('/stock', authenticateToken, stockController.addStock);
+router.put('/stock/:id/add', authenticateToken, stockController.increaseStock);
+router.patch('/stock/:id', authenticateToken, stockController.updateStockQuantity);
+router.delete('/stock/:id', authenticateToken, stockController.deleteStock);
 
 // Sales
-router.get('/sales', authenticateToken, authorizeRole(ALL_ROLES), salesController.getSales);
-router.post('/sales', authenticateToken, authorizeRole(ALL_ROLES), salesController.addSale);
-router.delete('/sales/:id', authenticateToken, authorizeRole(ALL_ROLES), salesController.deleteSale);
+router.get('/sales', authenticateToken, salesController.getSales);
+router.post('/sales', authenticateToken, salesController.addSale);
+router.delete('/sales/:id', authenticateToken, salesController.deleteSale);
 
 // Attendance
-router.get('/attendance', authenticateToken, authorizeRole(ALL_ROLES), attendanceController.getAttendance);
-router.post('/attendance', authenticateToken, authorizeRole(ALL_ROLES), attendanceController.markAttendance);
-router.delete('/attendance/:id', authenticateToken, authorizeRole(ADMIN_ONLY), attendanceController.deleteAttendance);
+router.get('/attendance', authenticateToken, attendanceController.getAttendance);
+router.post('/attendance', authenticateToken, attendanceController.markAttendance);
+router.delete('/attendance/:id', authenticateToken, attendanceController.deleteAttendance);
 
 // Usage / Customers removed
 

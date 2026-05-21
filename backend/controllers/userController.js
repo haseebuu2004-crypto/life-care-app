@@ -3,7 +3,7 @@ const db = require('../config/db');
 
 exports.getUsers = (req, res) => {
     try {
-        db.all('SELECT id, username, role FROM users ORDER BY id ASC', [], (err, rows) => {
+        db.all('SELECT id, username, role, email FROM users WHERE id = ?', [req.user.id], (err, rows) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
             res.json({ success: true, data: rows });
         });
