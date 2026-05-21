@@ -102,16 +102,37 @@ exports.deleteSaleTransaction = (id, ownerId) => {
             if (err) return reject(err);
             if (!sale) return reject(new Error("Sale not found"));
 
-            db.serialize(() => {
-                db.run('BEGIN TRANSACTION');
+            db.all('SELECT variant_id, qty FROM sale_items WHERE sale_id = ? AND owner_id = ?', [id, ownerId], (err, items) => {
+                if (err) return reject(err);
 
-                db.run('DELETE FROM sale_items WHERE sale_id = ? AND owner_id = ?', [id, ownerId], (err) => {
-                    if (err) { db.run('ROLLBACK'); return reject(err); }
-                    db.run('DELETE FROM sales WHERE id = ? AND owner_id = ?', [id, ownerId], (err) => {
-                        if (err) { db.run('ROLLBACK'); return reject(err); }
-                        db.run('COMMIT');
-                        resolve();
-                    });
+                db.serialize(() => {
+                    db.run('BEGIN TRANSACTION');
+
+                    const processRestore = (index) => {
+                        if (index >= items.length) {
+                            // All stock restored, now delete sale_items and sales
+                            db.run('DELETE FROM sale_items WHERE sale_id = ? AND owner_id = ?', [id, ownerId], (err) => {
+                                if (err) { db.run('ROLLBACK'); return reject(err); }
+                                db.run('DELETE FROM sales WHERE id = ? AND owner_id = ?', [id, ownerId], (err) => {
+                                    if (err) { db.run('ROLLBACK'); return reject(err); }
+                                    db.run('COMMIT');
+                                    resolve();
+                                });
+                            });
+                            return;
+                        }
+
+                        const item = items[index];
+                        db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [item.qty, item.variant_id, ownerId], (updateErr) => {
+                            if (updateErr) {
+                                db.run('ROLLBACK');
+                                return reject(updateErr);
+                            }
+                            processRestore(index + 1);
+                        });
+                    };
+
+                    processRestore(0);
                 });
             });
         });
