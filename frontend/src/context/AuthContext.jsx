@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { username: data.username, role: data.role };
+            const loggedInUser = { username: data.username, email: data.email, role: data.role };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);
         } catch (error) {
@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { username: data.username, role: data.role };
+            const loggedInUser = { username: data.username, email: data.email, role: data.role };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);
         } catch (error) {
