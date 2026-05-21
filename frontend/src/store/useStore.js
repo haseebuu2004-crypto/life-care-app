@@ -26,6 +26,18 @@ const useStore = create((set, get) => ({
         setTimeout(() => set({ toast: null }), 3500);
     },
     hideToast: () => set({ toast: null }),
+
+    resetStore: () => {
+        set({
+            products: [],
+            stock: [],
+            sales: [],
+            attendance: [],
+            users: [],
+            dashboardStats: null,
+            toast: null
+        });
+    },
     
     fetchData: async () => {
         set({ isLoading: true });
