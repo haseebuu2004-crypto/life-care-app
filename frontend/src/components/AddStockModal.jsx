@@ -17,6 +17,29 @@ export function AddStockModal({ onClose }) {
 
     const onSubmit = async (e) => {
         e.preventDefault();
+        
+        const normName = form.product_name.trim().toLowerCase();
+        const finalFlavor = (hasFlavour && form.flavor.trim() !== '') ? form.flavor.trim().toLowerCase() : 'base';
+        
+        // Frontend duplicate validation
+        const existingItems = useStore.getState().stock || [];
+        const isDuplicate = existingItems.some(item => {
+            const itemName = item.product_name.trim().toLowerCase();
+            const itemFlavor = (item.flavor || 'base').trim().toLowerCase();
+            return itemName === normName && itemFlavor === finalFlavor;
+        });
+
+        if (isDuplicate) {
+            const displayFlavor = hasFlavour ? form.flavor.trim() : 'Base';
+            useStore.getState().showToast(
+                hasFlavour 
+                    ? `Product "${form.product_name.trim()}" with flavour "${displayFlavor}" already exists.`
+                    : `Product "${form.product_name.trim()}" already exists.`,
+                "error"
+            );
+            return;
+        }
+
         try {
             await addStock({
                 productName: form.product_name,

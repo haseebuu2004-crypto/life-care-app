@@ -14,10 +14,27 @@ exports.getProducts = (req, res) => {
 exports.createProduct = (req, res) => {
     try {
         const { name } = req.body;
-        if (!name) return res.status(400).json({ success: false, message: "Product name is required" });
-        db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [name, req.user.id], function(err) {
-            if (err) return res.status(400).json({ success: false, message: err.message });
-            res.json({ success: true, data: { id: this.lastID, name } });
+        if (!name || name.trim() === '') return res.status(400).json({ success: false, message: "Product name is required" });
+        
+        const normName = name.trim();
+        const normNameLower = normName.toLowerCase();
+        
+        db.get('SELECT id FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normNameLower, req.user.id], (err, row) => {
+            if (err) return res.status(500).json({ success: false, message: err.message });
+            
+            if (row) {
+                return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
+            }
+            
+            db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [normName, req.user.id], function(err) {
+                if (err) {
+                    if (err.message.includes('UNIQUE constraint failed')) {
+                        return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
+                    }
+                    return res.status(400).json({ success: false, message: err.message });
+                }
+                res.json({ success: true, data: { id: this.lastID, name: normName } });
+            });
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
