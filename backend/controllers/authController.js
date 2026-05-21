@@ -38,11 +38,6 @@ exports.login = (req, res) => {
     }
 };
 
-const getAdminEmails = () => {
-    const emails = process.env.ADMIN_EMAILS || 'haseeb@gmail.com,admin@gmail.com';
-    return emails.split(',').map(e => e.trim().toLowerCase());
-};
-
 exports.googleLogin = async (req, res) => {
     try {
         const { idToken } = req.body;
@@ -70,8 +65,8 @@ exports.googleLogin = async (req, res) => {
                 // Initial token does not have a finalized role
                 const token = jwt.sign({ id: userData.id, username: userData.username, email: userData.email, role: 'pending' }, SECRET, { expiresIn: '8h' });
                 
-                const isAdmin = getAdminEmails().includes(userData.email.toLowerCase());
-                const allowedRoles = isAdmin ? ['admin', 'user'] : ['user'];
+                // ANY Google account can choose ANY role, provided they have the correct password.
+                const allowedRoles = ['admin', 'user'];
 
                 res.json({ 
                     token, 
@@ -117,8 +112,8 @@ exports.selectRole = (req, res) => {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         }
 
-        const isAdmin = getAdminEmails().includes(user.email.toLowerCase());
-        const allowedRoles = isAdmin ? ['admin', 'user'] : ['user'];
+        // ANY Google account can choose ANY role, provided they have the correct password.
+        const allowedRoles = ['admin', 'user'];
 
         if (!allowedRoles.includes(selectedRole)) {
             return res.status(403).json({ success: false, message: "Role not permitted" });

@@ -145,24 +145,21 @@ function SelectRole() {
                 <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Choose how you want to view your workspace.</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-                    {allowedRoles.includes('admin') && (
-                        <button 
-                            onClick={() => initiateRoleSelect('admin')}
-                            className="btn btn-primary"
-                            style={{ padding: '14px', fontSize: 16 }}
-                        >
-                            Admin
-                        </button>
-                    )}
-                    {allowedRoles.includes('user') && (
-                        <button 
-                            onClick={() => initiateRoleSelect('user')}
-                            className="btn btn-outline"
-                            style={{ padding: '14px', fontSize: 16 }}
-                        >
-                            User
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => initiateRoleSelect('admin')}
+                        className="btn btn-primary"
+                        style={{ padding: '14px', fontSize: 16 }}
+                    >
+                        Admin
+                    </button>
+                    
+                    <button 
+                        onClick={() => initiateRoleSelect('user')}
+                        className="btn btn-outline"
+                        style={{ padding: '14px', fontSize: 16 }}
+                    >
+                        User
+                    </button>
                 </div>
 
                 {showPasswordModal && (
