@@ -2,7 +2,7 @@ const salesService = require('../services/salesService');
 
 exports.getSales = async (req, res) => {
     try {
-        const rows = await salesService.getAllSales();
+        const rows = await salesService.getAllSales(req.user.id);
         res.json({ success: true, data: rows });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -34,7 +34,7 @@ exports.addSale = async (req, res) => {
         });
         
         const uniqueProducts = Object.values(mergedProducts);
-        await salesService.addSaleTransaction(date, customerName, uniqueProducts);
+        await salesService.addSaleTransaction(date, customerName, uniqueProducts, req.user.id);
         res.json({ success: true, data: null });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -43,7 +43,7 @@ exports.addSale = async (req, res) => {
 
 exports.deleteSale = async (req, res) => {
     try {
-        await salesService.deleteSaleTransaction(req.params.id);
+        await salesService.deleteSaleTransaction(req.params.id, req.user.id);
         res.json({ success: true, message: "Sale deleted successfully", data: null });
     } catch (error) {
         if (error.message === "Sale not found") {

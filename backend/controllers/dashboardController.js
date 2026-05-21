@@ -19,11 +19,12 @@ exports.getStats = (req, res) => {
 
         const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        const ownerId = req.user.id;
 
         db.serialize(() => {
             // 1. Totals (Sales & VP)
-            db.get(`SELECT SUM(total_profit) as totalProfit FROM sales`, [], (err, row1) => {
-                db.get(`SELECT SUM(pv.vp * si.qty) as totalVp FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id`, [], (err, row2) => {
+            db.get(`SELECT SUM(total_profit) as totalProfit FROM sales WHERE owner_id = ?`, [ownerId], (err, row1) => {
+                db.get(`SELECT SUM(pv.vp * si.qty) as totalVp FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = ?`, [ownerId], (err, row2) => {
                     stats.totals.totalSalesProfit = row1?.totalProfit || 0;
                     stats.totals.totalVpSold = row2?.totalVp || 0;
 
@@ -33,7 +34,8 @@ exports.getStats = (req, res) => {
                         SUM(pv.sp * s.qty) as stockValue,
                         COUNT(CASE WHEN s.qty < 5 THEN 1 END) as lowStock
                     FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
-                `, [], (err, row) => {
+                    WHERE s.owner_id = ?
+                `, [ownerId], (err, row) => {
                     if (row) {
                         stats.totals.totalStockValue = row.stockValue || 0;
                         stats.totals.lowStockCount = row.lowStock || 0;
@@ -45,9 +47,9 @@ exports.getStats = (req, res) => {
                         FROM stock s
                         JOIN product_variants pv ON s.variant_id = pv.id
                         JOIN products p ON pv.product_id = p.id
-                        WHERE s.qty < 5
+                        WHERE s.qty < 5 AND s.owner_id = ?
                         ORDER BY s.qty ASC
-                    `, [], (err, rows) => {
+                    `, [ownerId], (err, rows) => {
                         stats.lowStockItems = rows || [];
 
                         // 4. Monthly Product Sales
@@ -57,10 +59,10 @@ exports.getStats = (req, res) => {
                             JOIN sales s ON si.sale_id = s.id
                             JOIN product_variants pv ON si.variant_id = pv.id
                             JOIN products p ON pv.product_id = p.id
-                            WHERE s.date >= ?
+                            WHERE s.date >= ? AND s.owner_id = ?
                             GROUP BY p.name
                             ORDER BY qty DESC
-                        `, [firstDay], (err, rows) => {
+                        `, [firstDay, ownerId], (err, rows) => {
                             stats.monthlyProductSales = rows || [];
                             if (rows && rows.length > 0) stats.totals.topSeller = rows[0].name;
 
@@ -68,20 +70,21 @@ exports.getStats = (req, res) => {
                             db.all(`
                                 SELECT customer as name, SUM(total_profit) as profit
                                 FROM sales
+                                WHERE owner_id = ?
                                 GROUP BY customer
                                 ORDER BY profit DESC
                                 LIMIT 10
-                            `, [], (err, rows) => {
+                            `, [ownerId], (err, rows) => {
                                 stats.topCustomers = rows || [];
 
                                 // 6. Shake Profit Details (Aggregated)
                                 db.all(`
                                     SELECT name, COUNT(*) as attendance, AVG(shake_profit) as profitPerDay, SUM(shake_profit) as totalProfit
                                     FROM attendance
-                                    WHERE status = 'Present'
+                                    WHERE status = 'Present' AND owner_id = ?
                                     GROUP BY name
                                     ORDER BY totalProfit DESC
-                                `, [], (err, rows) => {
+                                `, [ownerId], (err, rows) => {
                                     stats.shakeProfitDetails = rows || [];
                                     stats.totals.totalShakeProfit = (rows || []).reduce((acc, curr) => acc + curr.totalProfit, 0);
 
@@ -101,15 +104,15 @@ exports.getStats = (req, res) => {
 
 exports.resetData = (req, res) => {
     try {
+        const ownerId = req.user.id;
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
-            db.run('DELETE FROM sale_items');
-            db.run('DELETE FROM sales');
-            db.run('DELETE FROM stock');
-            db.run('DELETE FROM product_variants');
-            db.run('DELETE FROM products');
-            db.run('DELETE FROM attendance');
-            // Not deleting users, only app data
+            db.run('DELETE FROM sale_items WHERE owner_id = ?', [ownerId]);
+            db.run('DELETE FROM sales WHERE owner_id = ?', [ownerId]);
+            db.run('DELETE FROM stock WHERE owner_id = ?', [ownerId]);
+            db.run('DELETE FROM product_variants WHERE owner_id = ?', [ownerId]);
+            db.run('DELETE FROM products WHERE owner_id = ?', [ownerId]);
+            db.run('DELETE FROM attendance WHERE owner_id = ?', [ownerId]);
             db.run('COMMIT', (err) => {
                 if (err) {
                     db.run('ROLLBACK');
@@ -125,6 +128,7 @@ exports.resetData = (req, res) => {
 
 exports.exportReport = async (req, res) => {
     const type = req.query.type;
+    const ownerId = req.user.id;
     if (!['sales', 'attendance', 'summary'].includes(type)) {
         return res.status(400).json({ success: false, message: 'Invalid report type' });
     }
@@ -139,7 +143,7 @@ exports.exportReport = async (req, res) => {
 
         doc.pipe(res);
 
-        const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right; // Should be ~495 for A4
+        const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
         // Professional Header
         doc.fontSize(24).font('Helvetica-Bold').fillColor('#222222').text('Life Care', { align: 'center' });
@@ -153,14 +157,15 @@ exports.exportReport = async (req, res) => {
                     JOIN sales s ON si.sale_id = s.id 
                     LEFT JOIN product_variants pv ON si.variant_id = pv.id 
                     LEFT JOIN products p ON pv.product_id = p.id
-                    ORDER BY s.date DESC`, [], (err, rows) => {
+                    WHERE s.owner_id = ?
+                    ORDER BY s.date DESC`, [ownerId], (err, rows) => {
                 if (err) reject(err);
                 else resolve(rows);
             });
         });
 
         const getAttendance = () => new Promise((resolve, reject) => {
-            db.all(`SELECT date, name, status, shake_profit FROM attendance ORDER BY date DESC`, [], (err, rows) => {
+            db.all(`SELECT date, name, status, shake_profit FROM attendance WHERE owner_id = ? ORDER BY date DESC`, [ownerId], (err, rows) => {
                 if (err) reject(err);
                 else resolve(rows);
             });
@@ -248,7 +253,7 @@ exports.exportReport = async (req, res) => {
                 doc.moveDown(1.5);
             }
 
-            // Date Header - crisp, bold, full width
+            // Date Header
             const dateStr = date.split('-').reverse().join('/');
             doc.rect(doc.page.margins.left, doc.y, contentWidth, 28).fill('#f1f3f5');
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#212529').text(`DATE: ${dateStr}`, doc.page.margins.left + 12, doc.y + 8);
@@ -295,7 +300,6 @@ exports.exportReport = async (req, res) => {
             }
             doc.moveDown(0.5);
             
-            // Draw a compact summary box aligned to the left
             const summaryX = doc.page.margins.left;
             doc.font('Helvetica-Bold').fontSize(11).fillColor('#212529').text('Daily Summary', summaryX);
             doc.moveDown(0.3);
@@ -317,7 +321,7 @@ exports.exportReport = async (req, res) => {
             doc.font('Helvetica').text(`Total Profit:`, summaryX, summaryY);
             doc.font('Helvetica-Bold').fillColor('#228be6').text(`Rs. ${dailyProfit}`, summaryX + 100, summaryY);
             
-            doc.y = summaryY + 20; // Set Y for next date section
+            doc.y = summaryY + 20;
         });
 
         // Footer
@@ -329,9 +333,7 @@ exports.exportReport = async (req, res) => {
 
         for (let i = 0; i < pages; i++) {
             if (doc.switchToPage) doc.switchToPage(i);
-            // Footer separator
             doc.moveTo(doc.page.margins.left, doc.page.height - 50).lineTo(doc.page.width - doc.page.margins.right, doc.page.height - 50).lineWidth(0.5).stroke('#dee2e6');
-            // Footer text
             doc.fontSize(8).fillColor('#868e96').text('Generated by Nutrition Club Manager', doc.page.margins.left, doc.page.height - 40, { align: 'left' });
             doc.text(`Generated on: ${fDate} ${fTime}`, doc.page.margins.left, doc.page.height - 40, { align: 'right' });
         }
@@ -344,16 +346,17 @@ exports.exportReport = async (req, res) => {
 
 exports.clearAttendanceData = (req, res) => {
     try {
-        const { month } = req.body; // Expecting 'YYYY-MM' format if provided
+        const { month } = req.body;
+        const ownerId = req.user.id;
         
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
             
-            let query = 'DELETE FROM attendance';
-            let params = [];
+            let query = 'DELETE FROM attendance WHERE owner_id = ?';
+            let params = [ownerId];
             
             if (month) {
-                query += ' WHERE strftime("%Y-%m", date) = ?';
+                query += ' AND strftime("%Y-%m", date) = ?';
                 params.push(month);
             }
             
@@ -378,27 +381,28 @@ exports.clearAttendanceData = (req, res) => {
 
 exports.clearSalesData = (req, res) => {
     try {
-        const { month } = req.body; // Expecting 'YYYY-MM' format if provided
+        const { month } = req.body;
+        const ownerId = req.user.id;
         
         db.serialize(() => {
             db.run('BEGIN TRANSACTION');
             
-            let query = 'DELETE FROM sales';
-            let params = [];
+            let query = 'DELETE FROM sales WHERE owner_id = ?';
+            let params = [ownerId];
             
             if (month) {
-                query += ' WHERE strftime("%Y-%m", date) = ?';
+                query += ' AND strftime("%Y-%m", date) = ?';
                 params.push(month);
             }
             
-            // Delete sales (sale_items should ideally be cascaded by DB, but SQLite foreign keys might be off, 
-            // so let's delete sale_items manually just in case to avoid orphan records)
-            let itemQuery = 'DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales)';
+            let itemQuery = 'DELETE FROM sale_items WHERE owner_id = ?';
+            let itemParams = [ownerId];
             if (month) {
-                itemQuery = 'DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE strftime("%Y-%m", date) = ?)';
+                itemQuery = 'DELETE FROM sale_items WHERE owner_id = ? AND sale_id IN (SELECT id FROM sales WHERE strftime("%Y-%m", date) = ? AND owner_id = ?)';
+                itemParams = [ownerId, month, ownerId];
             }
             
-            db.run(itemQuery, params, function(err) {
+            db.run(itemQuery, itemParams, function(err) {
                 if (err) {
                     db.run('ROLLBACK');
                     return res.status(500).json({ success: false, message: "Failed to clear sale items." });
