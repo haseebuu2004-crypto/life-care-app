@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import api from '../services/api';
+import useStore from '../store/useStore';
 
 const AuthContext = createContext();
 
@@ -8,6 +9,7 @@ export function AuthProvider({ children }) {
 
     const login = async (username, password) => {
         try {
+            useStore.getState().resetStore();
             const { data } = await api.post('/auth/login', { username, password });
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);
@@ -27,11 +29,13 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('sessionId');
+        useStore.getState().resetStore();
         setUser(null);
     };
 
     const googleLogin = async (idToken) => {
         try {
+            useStore.getState().resetStore();
             const { data } = await api.post('/auth/google', { idToken });
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);

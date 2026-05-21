@@ -21,26 +21,10 @@ const PageLoader = () => (
 );
 
 function Login() {
-    const { login, googleLogin } = useAuth();
+    const { googleLogin } = useAuth();
     const nav = useNavigate();
-
     const [loginError, setLoginError] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-
-    const onSubmit = async (e) => {
-        e.preventDefault();
-        setLoginError('');
-        setIsSubmitting(true);
-        try {
-            await login(e.target.username.value, e.target.password.value);
-            nav('/');
-        } catch (error) {
-            setLoginError(error.message || 'Invalid credentials');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
 
     const handleGoogleLogin = async () => {
         setLoginError('');
@@ -51,7 +35,7 @@ function Login() {
             const result = await signInWithPopup(auth, googleProvider);
             const idToken = await result.user.getIdToken();
             await googleLogin(idToken);
-            nav('/');
+            nav('/select-role');
         } catch (error) {
             if (error.code === 'auth/popup-closed-by-user') {
                 return; // Ignore
@@ -65,36 +49,39 @@ function Login() {
 
     return (
         <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
-            <div className="card" style={{ width: 400, padding: 30, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}>
-                <div style={{ textAlign: 'center', marginBottom: 30 }}>
-                    <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>🥗 Life Care</h2>
-                    <p style={{ color: '#64748b', margin: '8px 0 0' }}>Welcome back! Please login.</p>
-                </div>
+            <div className="card" style={{ width: 400, padding: 40, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
+                <h2 style={{ margin: 0, fontSize: 28, color: '#1e293b' }}>🥗 Life Care</h2>
+                <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Welcome back! Please sign in to continue.</p>
+
+                {loginError && (
+                    <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>
+                        {loginError}
+                    </div>
+                )}
 
                 <button 
                     type="button" 
                     onClick={handleGoogleLogin} 
-                    disabled={isGoogleLoading || isSubmitting}
+                    disabled={isGoogleLoading}
                     style={{
                         width: '100%',
-                        padding: '12px',
+                        padding: '14px',
                         background: 'white',
                         border: '1px solid #e2e8f0',
                         borderRadius: 8,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: 10,
+                        gap: 12,
                         cursor: 'pointer',
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: 500,
                         color: '#334155',
-                        marginBottom: 20,
                         transition: 'all 0.2s',
                         boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
                     }}
                 >
-                    <svg width="20" height="20" viewBox="0 0 24 24">
+                    <svg width="22" height="22" viewBox="0 0 24 24">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -102,31 +89,62 @@ function Login() {
                     </svg>
                     {isGoogleLoading ? 'Connecting...' : 'Continue with Google'}
                 </button>
+            </div>
+        </div>
+    );
+}
 
-                <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
-                    <div style={{ flex: 1, height: 1, background: '#e2e8f0' }}></div>
-                    <span style={{ padding: '0 10px', color: '#94a3b8', fontSize: 12, textTransform: 'uppercase' }}>or continue with email</span>
-                    <div style={{ flex: 1, height: 1, background: '#e2e8f0' }}></div>
-                </div>
+function SelectRole() {
+    const { user } = useAuth();
+    const nav = useNavigate();
+    const [error, setError] = useState('');
 
-                <form onSubmit={onSubmit}>
-                    <div className="form-group" style={{ marginBottom: 15 }}>
-                        <label style={{ fontSize: 14, color: '#475569', fontWeight: 500, display: 'block', marginBottom: 6 }}>Username / Email</label>
-                        <input name="username" required style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }} />
+    useEffect(() => {
+        if (!user) nav('/login');
+    }, [user, nav]);
+
+    const handleRoleSelect = (role) => {
+        if (role === 'admin') {
+            if (user?.role === 'admin') {
+                nav('/overview');
+            } else {
+                setError('Admin access not allowed');
+            }
+        } else {
+            nav('/sales');
+        }
+    };
+
+    if (!user) return null;
+
+    return (
+        <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
+            <div className="card" style={{ width: 400, padding: 40, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
+                <h2 style={{ margin: 0, fontSize: 24, color: '#1e293b' }}>Select Role</h2>
+                <p style={{ color: '#64748b', margin: '10px 0 30px' }}>Choose how you want to use the application.</p>
+
+                {error && (
+                    <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '12px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>
+                        {error}
                     </div>
-                    <div className="form-group" style={{ marginBottom: 20 }}>
-                        <label style={{ fontSize: 14, color: '#475569', fontWeight: 500, display: 'block', marginBottom: 6 }}>Password</label>
-                        <input name="password" type="password" required style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }} />
-                    </div>
-                    {loginError && (
-                        <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '10px 12px', borderRadius: 8, marginBottom: 15, fontSize: 14 }}>
-                            {loginError}
-                        </div>
-                    )}
-                    <button type="submit" className="btn btn-primary w-full" disabled={isSubmitting || isGoogleLoading} style={{ padding: '12px' }}>
-                        {isSubmitting ? 'Logging in...' : 'Login'}
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+                    <button 
+                        onClick={() => handleRoleSelect('admin')}
+                        className="btn btn-primary"
+                        style={{ padding: '14px', fontSize: 16 }}
+                    >
+                        Admin
                     </button>
-                </form>
+                    <button 
+                        onClick={() => handleRoleSelect('user')}
+                        className="btn btn-outline"
+                        style={{ padding: '14px', fontSize: 16 }}
+                    >
+                        User
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -161,6 +179,7 @@ function App() {
             <Suspense fallback={<PageLoader />}>
                 <Routes>
                     <Route path="/login" element={<Login />} />
+                    <Route path="/select-role" element={<SelectRole />} />
                     <Route path="/" element={<Navigate to={user?.role === 'admin' ? '/overview' : '/sales'} replace />} />
                     <Route path="/overview" element={<AdminRoute><Overview /></AdminRoute>} />
                     <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
