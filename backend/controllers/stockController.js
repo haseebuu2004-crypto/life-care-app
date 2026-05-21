@@ -33,23 +33,49 @@ exports.addStock = (req, res) => {
         
         db.serialize(() => {
             db.get('SELECT id FROM products WHERE LOWER(TRIM(name)) = ? AND owner_id = ?', [normName, ownerId], (err, product) => {
-                if (err) return res.status(500).json({ success: false, message: err.message });
+                if (err) {
+                    console.error('SQL Error (SELECT products):', err);
+                    return res.status(500).json({ success: false, message: 'Database error finding product: ' + err.message });
+                }
                 
                 const handleStock = (productId) => {
                     db.get('SELECT id FROM product_variants WHERE product_id = ? AND LOWER(TRIM(flavor)) = ? AND owner_id = ?', [productId, finalFlavor.toLowerCase(), ownerId], (err, pv) => {
-                        if (err) return res.status(500).json({ success: false, message: err.message });
+                        if (err) {
+                            console.error('SQL Error (SELECT variant):', err);
+                            return res.status(500).json({ success: false, message: 'Database error finding variant: ' + err.message });
+                        }
                         if (pv) {
                             db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [quantity, pv.id, ownerId], function(err) {
-                                if (err) return res.status(500).json({ success: false, message: err.message });
-                                res.status(200).json({ success: true, data: { id: pv.id, message: "Stock updated" } });
+                                if (err) {
+                                    console.error('SQL Error (UPDATE stock):', err);
+                                    return res.status(500).json({ success: false, message: 'Database error updating stock: ' + err.message });
+                                }
+                                if (this.changes === 0) {
+                                    // Stock record doesn't exist yet for this variant, create it
+                                    db.run('INSERT INTO stock (variant_id, qty, owner_id) VALUES (?, ?, ?)', [pv.id, quantity, ownerId], function(insertErr) {
+                                        if (insertErr) {
+                                            console.error('SQL Error (INSERT missing stock):', insertErr);
+                                            return res.status(500).json({ success: false, message: 'Database error creating stock: ' + insertErr.message });
+                                        }
+                                        res.status(200).json({ success: true, data: { id: pv.id, message: "Stock created" } });
+                                    });
+                                } else {
+                                    res.status(200).json({ success: true, data: { id: pv.id, message: "Stock updated" } });
+                                }
                             });
                         } else {
                             db.run('INSERT INTO product_variants (product_id, flavor, vp, sp, owner_id) VALUES (?, ?, ?, ?, ?)',
                                 [productId, finalFlavor, volumePoint, price, ownerId], function(err) {
-                                if (err) return res.status(500).json({ success: false, message: err.message });
+                                if (err) {
+                                    console.error('SQL Error (INSERT variant):', err);
+                                    return res.status(500).json({ success: false, message: 'Database error creating variant: ' + err.message });
+                                }
                                 const pvId = this.lastID;
                                 db.run('INSERT INTO stock (variant_id, qty, owner_id) VALUES (?, ?, ?)', [pvId, quantity, ownerId], function(err) {
-                                    if (err) return res.status(500).json({ success: false, message: err.message });
+                                    if (err) {
+                                        console.error('SQL Error (INSERT stock):', err);
+                                        return res.status(500).json({ success: false, message: 'Database error creating stock: ' + err.message });
+                                    }
                                     res.status(200).json({ success: true, data: { id: pvId, message: "Stock added" } });
                                 });
                             });
@@ -61,7 +87,10 @@ exports.addStock = (req, res) => {
                     handleStock(product.id);
                 } else {
                     db.run('INSERT INTO products (name, owner_id) VALUES (?, ?)', [productName.trim(), ownerId], function(err) {
-                        if (err) return res.status(500).json({ success: false, message: err.message });
+                        if (err) {
+                            console.error('SQL Error (INSERT product):', err);
+                            return res.status(500).json({ success: false, message: 'Database error creating product: ' + err.message });
+                        }
                         handleStock(this.lastID);
                     });
                 }
