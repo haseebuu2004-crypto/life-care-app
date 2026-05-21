@@ -38,6 +38,11 @@ exports.login = (req, res) => {
     }
 };
 
+const getAdminEmails = () => {
+    const emails = process.env.ADMIN_EMAILS || 'haseeb@gmail.com,admin@gmail.com';
+    return emails.split(',').map(e => e.trim().toLowerCase());
+};
+
 exports.googleLogin = async (req, res) => {
     try {
         const { idToken } = req.body;
@@ -62,20 +67,17 @@ exports.googleLogin = async (req, res) => {
             if (err) return res.status(500).json({ success: false, message: err.message });
 
             const finishLogin = (userData) => {
-                const token = jwt.sign({ id: userData.id, username: userData.username, email: userData.email }, SECRET, { expiresIn: '8h' });
-                const ua = req.headers['user-agent'] || '';
-                const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
-                const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
-                const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/\s]([\d.]+)/)?.[1] || 'Unknown';
+                // Initial token does not have a finalized role
+                const token = jwt.sign({ id: userData.id, username: userData.username, email: userData.email, role: 'pending' }, SECRET, { expiresIn: '8h' });
+                
+                const isAdmin = getAdminEmails().includes(userData.email.toLowerCase());
+                const allowedRoles = isAdmin ? ['admin', 'user'] : ['user'];
 
-                db.run(
-                    'INSERT INTO login_history (user_id, username, role, device, browser, ip) VALUES (?, ?, ?, ?, ?, ?)',
-                    [userData.id, userData.username, userData.role || 'user', isMobile, browser, ip],
-                    function(err) {
-                        if (err) return res.status(500).json({ success: false, message: err.message });
-                        res.json({ token, username: userData.username, email: userData.email, sessionId: this.lastID });
-                    }
-                );
+                res.json({ 
+                    token, 
+                    user: { username: userData.username, email: userData.email }, 
+                    allowedRoles 
+                });
             };
 
             if (user) {
@@ -102,6 +104,50 @@ exports.googleLogin = async (req, res) => {
         });
     } catch (error) {
         console.error("Google Login Error:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+exports.selectRole = (req, res) => {
+    try {
+        const { selectedRole } = req.body;
+        const user = req.user; // from authenticateToken middleware
+
+        if (!user || !user.email) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+
+        const isAdmin = getAdminEmails().includes(user.email.toLowerCase());
+        const allowedRoles = isAdmin ? ['admin', 'user'] : ['user'];
+
+        if (!allowedRoles.includes(selectedRole)) {
+            return res.status(403).json({ success: false, message: "Role not permitted" });
+        }
+
+        // Issue final token with the selected role
+        const token = jwt.sign({ id: user.id, username: user.username, email: user.email, role: selectedRole }, SECRET, { expiresIn: '8h' });
+        
+        const ua = req.headers['user-agent'] || '';
+        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+        const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
+        const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/\s]([\d.]+)/)?.[1] || 'Unknown';
+
+        db.run(
+            'INSERT INTO login_history (user_id, username, role, device, browser, ip) VALUES (?, ?, ?, ?, ?, ?)',
+            [user.id, user.username, selectedRole, isMobile, browser, ip],
+            function(err) {
+                if (err) return res.status(500).json({ success: false, message: err.message });
+                res.json({ 
+                    token, 
+                    role: selectedRole, 
+                    user: { id: user.id, username: user.username, email: user.email },
+                    sessionId: this.lastID 
+                });
+            }
+        );
+
+    } catch (error) {
+        console.error("Select Role Error:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };

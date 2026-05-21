@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import useStore from './store/useStore';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
@@ -35,8 +35,8 @@ function Login() {
             const { signInWithPopup } = await import('firebase/auth');
             const result = await signInWithPopup(auth, googleProvider);
             const idToken = await result.user.getIdToken();
-            await googleLogin(idToken);
-            nav('/select-role');
+            const { allowedRoles } = await googleLogin(idToken);
+            nav('/select-role', { state: { allowedRoles } });
         } catch (error) {
             if (error.code === 'auth/popup-closed-by-user') {
                 return; // Ignore
@@ -96,29 +96,35 @@ function Login() {
 }
 
 function SelectRole() {
-    const { user, updateRole } = useAuth();
+    const { selectFinalRole } = useAuth();
     const nav = useNavigate();
+    const location = useLocation();
+    const allowedRoles = location.state?.allowedRoles || [];
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (!user) nav('/login');
-    }, [user, nav]);
+        if (!allowedRoles.length) nav('/login');
+    }, [allowedRoles, nav]);
 
-    const handleRoleSelect = (role) => {
-        if (role === 'admin') {
-            if (isAdminEmail(user?.email)) {
-                updateRole('admin');
+    const handleRoleSelect = async (role) => {
+        setError('');
+        setLoading(true);
+        try {
+            await selectFinalRole(role);
+            if (role === 'admin') {
                 nav('/overview');
             } else {
-                setError('Admin access not allowed');
+                nav('/sales');
             }
-        } else {
-            updateRole('user');
-            nav('/sales');
+        } catch (err) {
+            setError(err.message || 'Failed to assign role');
+        } finally {
+            setLoading(false);
         }
     };
 
-    if (!user) return null;
+    if (!allowedRoles.length) return null;
 
     return (
         <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
@@ -133,20 +139,26 @@ function SelectRole() {
                 )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-                    <button 
-                        onClick={() => handleRoleSelect('admin')}
-                        className="btn btn-primary"
-                        style={{ padding: '14px', fontSize: 16 }}
-                    >
-                        Management Dashboard (Admin View)
-                    </button>
-                    <button 
-                        onClick={() => handleRoleSelect('user')}
-                        className="btn btn-outline"
-                        style={{ padding: '14px', fontSize: 16 }}
-                    >
-                        Daily Operations (User View)
-                    </button>
+                    {allowedRoles.includes('admin') && (
+                        <button 
+                            onClick={() => handleRoleSelect('admin')}
+                            disabled={loading}
+                            className="btn btn-primary"
+                            style={{ padding: '14px', fontSize: 16 }}
+                        >
+                            {loading ? 'Setting up...' : 'Management Dashboard (Admin View)'}
+                        </button>
+                    )}
+                    {allowedRoles.includes('user') && (
+                        <button 
+                            onClick={() => handleRoleSelect('user')}
+                            disabled={loading}
+                            className="btn btn-outline"
+                            style={{ padding: '14px', fontSize: 16 }}
+                        >
+                            {loading ? 'Setting up...' : 'Daily Operations (User View)'}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
