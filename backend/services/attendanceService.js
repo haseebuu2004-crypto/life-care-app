@@ -1,34 +1,25 @@
-const db = require('../config/db');
+const pool = require('../config/db');
 
-exports.getAllAttendance = (ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.all('SELECT * FROM attendance WHERE owner_id = ?', [ownerId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
+exports.getAllAttendance = async (ownerId) => {
+    const { rows } = await pool.query('SELECT * FROM attendance WHERE owner_id = $1', [ownerId]);
+    return rows;
 };
 
-exports.markAttendanceRecord = (date, normalizedName, status, finalShakeProfit, ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.run('INSERT INTO attendance (date, name, status, others_deduction, shake_profit, owner_id) VALUES (?, ?, ?, ?, ?, ?)', 
-            [date, normalizedName, status, 0, finalShakeProfit, ownerId], function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-        });
-    });
+exports.markAttendanceRecord = async (date, normalizedName, status, finalShakeProfit, ownerId) => {
+    const { rows } = await pool.query(
+        'INSERT INTO attendance (date, name, status, others_deduction, shake_profit, owner_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', 
+        [date, normalizedName, status, 0, finalShakeProfit, ownerId]
+    );
+    return rows[0].id;
 };
 
-exports.deleteAttendanceRecord = (id, ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.get('SELECT * FROM attendance WHERE id = ? AND owner_id = ?', [id, ownerId], (err, record) => {
-            if (err) return reject(err);
-            if (!record) return reject(new Error("Record not found"));
-            
-            db.run('DELETE FROM attendance WHERE id = ? AND owner_id = ?', [id, ownerId], (err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
-    });
+exports.deleteAttendanceRecord = async (id, ownerId) => {
+    const { rows } = await pool.query('SELECT * FROM attendance WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    const record = rows[0];
+    
+    if (!record) {
+        throw new Error("Record not found");
+    }
+    
+    await pool.query('DELETE FROM attendance WHERE id = $1 AND owner_id = $2', [id, ownerId]);
 };

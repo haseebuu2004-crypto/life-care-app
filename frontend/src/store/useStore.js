@@ -15,6 +15,7 @@ const useStore = create((set, get) => ({
     products: [],
     stock: [],
     sales: [],
+    user: JSON.parse(localStorage.getItem("user")) || null,
     attendance: [],
     users: [],
     dashboardStats: null,
@@ -64,15 +65,7 @@ const useStore = create((set, get) => ({
         }
     },
 
-    googleLogin: async (idToken) => {
-        try {
-            const res = await api.post('/auth/google', { idToken });
-            return extract(res); // Will return { token, role, username, sessionId }
-        } catch (error) {
-            const msg = error.response?.data?.message || 'Google login failed on backend';
-            throw new Error(msg);
-        }
-    },
+
 
     // Stock Actions
     addStock: async (payload) => {
@@ -246,9 +239,9 @@ const useStore = create((set, get) => ({
             throw new Error(msg);
         }
     },
-    resetData: async () => {
+    resetData: async (password) => {
         try {
-            const res = await api.delete('/system/reset');
+            const res = await api.delete('/system/reset', { data: { password } });
             await get().fetchData();
             return extract(res);
         } catch (error) {

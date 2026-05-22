@@ -1,140 +1,106 @@
-const db = require('../config/db');
+const pool = require('../config/db');
 
-exports.getAllSales = (ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.all(`SELECT s.id as id, si.id as item_id, s.date, s.customer, pv.flavor, p.name as product_name, si.qty, si.sale_price, si.total_amount, si.profit, si.variant_id as stock_id
-                FROM sale_items si
-                JOIN sales s ON si.sale_id = s.id
-                LEFT JOIN product_variants pv ON si.variant_id = pv.id
-                LEFT JOIN products p ON pv.product_id = p.id
-                WHERE s.owner_id = ?
-                ORDER BY s.date DESC`, [ownerId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
+exports.getAllSales = async (ownerId) => {
+    const { rows } = await pool.query(`
+        SELECT s.id as id, si.id as item_id, s.date, s.customer, pv.flavor, p.name as product_name, si.qty, si.sale_price, si.total_amount, si.profit, si.variant_id as stock_id
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        LEFT JOIN product_variants pv ON si.variant_id = pv.id
+        LEFT JOIN products p ON pv.product_id = p.id
+        WHERE s.owner_id = $1
+        ORDER BY s.date DESC
+    `, [ownerId]);
+    return rows;
 };
 
-exports.addSaleTransaction = (date, customerName, uniqueProducts, ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
+exports.addSaleTransaction = async (date, customerName, uniqueProducts, ownerId) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const insertSaleRes = await client.query(
+            'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, 0, $3) RETURNING id', 
+            [date, customerName, ownerId]
+        );
+        const saleId = insertSaleRes.rows[0].id;
+        
+        let saleTotalAmount = 0;
+        let saleTotalProfit = 0;
+
+        for (const p of uniqueProducts) {
+            const stockRes = await client.query(`
+                SELECT s.qty, pr.name as product_name, pv.flavor, pv.sp as cost_price
+                FROM stock s 
+                JOIN product_variants pv ON s.variant_id = pv.id
+                JOIN products pr ON pv.product_id = pr.id
+                WHERE s.variant_id = $1 AND s.owner_id = $2
+            `, [p.stock_id, ownerId]);
             
-            db.run('INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES (?, ?, 0, 0, ?)', [date, customerName, ownerId], function(err) {
-                if (err) {
-                    db.run('ROLLBACK');
-                    return reject(err);
-                }
-                const saleId = this.lastID;
-                let saleTotalAmount = 0;
-                let saleTotalProfit = 0;
+            const row = stockRes.rows[0];
+            
+            if (!row) {
+                throw new Error("Invalid product variant selected.");
+            }
+            
+            if (row.qty < p.quantity) {
+                const flavorText = row.flavor && row.flavor !== 'Base' ? ` (${row.flavor})` : '';
+                throw new Error(`Only ${row.qty} units available for ${row.product_name}${flavorText}`);
+            }
 
-                const processItem = (index) => {
-                    if (index >= uniqueProducts.length) {
-                        // All processed
-                        db.run('UPDATE sales SET total_amount = ?, total_profit = ? WHERE id = ? AND owner_id = ?', [saleTotalAmount, saleTotalProfit, saleId, ownerId], (updateErr) => {
-                            if (updateErr) {
-                                db.run('ROLLBACK');
-                                return reject(updateErr);
-                            }
-                            db.run('COMMIT');
-                            resolve();
-                        });
-                        return;
-                    }
+            // Perform secure server-side calculations
+            const costPrice = parseFloat(row.cost_price) || 0;
+            const requestedSellingPrice = parseFloat(p.sale_price) || 0;
+            
+            const backendTotalAmount = requestedSellingPrice * p.quantity;
+            const backendProfit = (requestedSellingPrice - costPrice) * p.quantity;
 
-                    const p = uniqueProducts[index];
-                    
-                    // Fetch stock info with product name for better errors
-                    db.get(`
-                        SELECT s.qty, pr.name as product_name, pv.flavor 
-                        FROM stock s 
-                        JOIN product_variants pv ON s.variant_id = pv.id
-                        JOIN products pr ON pv.product_id = pr.id
-                        WHERE s.variant_id = ? AND s.owner_id = ?
-                    `, [p.stock_id, ownerId], (err, row) => {
-                        if (err) {
-                            db.run('ROLLBACK');
-                            return reject(err);
-                        }
-                        
-                        if (!row) {
-                            db.run('ROLLBACK');
-                            return reject(new Error("Invalid product variant selected."));
-                        }
-                        
-                        if (row.qty < p.quantity) {
-                            db.run('ROLLBACK');
-                            const flavorText = row.flavor && row.flavor !== 'Base' ? ` (${row.flavor})` : '';
-                            return reject(new Error(`Only ${row.qty} units available for ${row.product_name}${flavorText}`));
-                        }
+            await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [p.quantity, p.stock_id, ownerId]);
+            
+            await client.query(
+                'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                [saleId, p.stock_id, p.quantity, requestedSellingPrice, backendTotalAmount, backendProfit, ownerId]
+            );
+            
+            saleTotalAmount += backendTotalAmount;
+            saleTotalProfit += backendProfit;
+        }
 
-                        db.run('UPDATE stock SET qty = qty - ? WHERE variant_id = ? AND owner_id = ?', [p.quantity, p.stock_id, ownerId], (updateErr) => {
-                            if (updateErr) {
-                                db.run('ROLLBACK');
-                                return reject(updateErr);
-                            }
-                            
-                            db.run('INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                [saleId, p.stock_id, p.quantity, p.sale_price, p.total_amount, p.profit, ownerId], (insErr) => {
-                                    if (insErr) {
-                                        db.run('ROLLBACK');
-                                        return reject(insErr);
-                                    }
-                                    saleTotalAmount += p.total_amount;
-                                    saleTotalProfit += p.profit;
-                                    
-                                    processItem(index + 1);
-                            });
-                        });
-                    });
-                };
-
-                processItem(0);
-            });
-        });
-    });
+        await client.query('UPDATE sales SET total_amount = $1, total_profit = $2 WHERE id = $3 AND owner_id = $4', [saleTotalAmount, saleTotalProfit, saleId, ownerId]);
+        
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
-exports.deleteSaleTransaction = (id, ownerId) => {
-    return new Promise((resolve, reject) => {
-        db.get('SELECT id FROM sales WHERE id = ? AND owner_id = ?', [id, ownerId], (err, sale) => {
-            if (err) return reject(err);
-            if (!sale) return reject(new Error("Sale not found"));
+exports.deleteSaleTransaction = async (id, ownerId) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const saleRes = await client.query('SELECT id FROM sales WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+        if (saleRes.rows.length === 0) {
+            throw new Error("Sale not found");
+        }
 
-            db.all('SELECT variant_id, qty FROM sale_items WHERE sale_id = ? AND owner_id = ?', [id, ownerId], (err, items) => {
-                if (err) return reject(err);
+        const itemsRes = await client.query('SELECT variant_id, qty FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [id, ownerId]);
+        const items = itemsRes.rows;
 
-                db.serialize(() => {
-                    db.run('BEGIN TRANSACTION');
+        for (const item of items) {
+            await client.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, item.variant_id, ownerId]);
+        }
 
-                    const processRestore = (index) => {
-                        if (index >= items.length) {
-                            // All stock restored, now delete sale_items and sales
-                            db.run('DELETE FROM sale_items WHERE sale_id = ? AND owner_id = ?', [id, ownerId], (err) => {
-                                if (err) { db.run('ROLLBACK'); return reject(err); }
-                                db.run('DELETE FROM sales WHERE id = ? AND owner_id = ?', [id, ownerId], (err) => {
-                                    if (err) { db.run('ROLLBACK'); return reject(err); }
-                                    db.run('COMMIT');
-                                    resolve();
-                                });
-                            });
-                            return;
-                        }
-
-                        const item = items[index];
-                        db.run('UPDATE stock SET qty = qty + ? WHERE variant_id = ? AND owner_id = ?', [item.qty, item.variant_id, ownerId], (updateErr) => {
-                            if (updateErr) {
-                                db.run('ROLLBACK');
-                                return reject(updateErr);
-                            }
-                            processRestore(index + 1);
-                        });
-                    };
-
-                    processRestore(0);
-                });
-            });
-        });
-    });
+        await client.query('DELETE FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [id, ownerId]);
+        await client.query('DELETE FROM sales WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+        
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
