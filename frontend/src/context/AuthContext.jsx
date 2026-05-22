@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
             const { data } = await api.post('/auth/login', { username, password });
             if (!data?.token) throw new Error('Invalid response from server');
             localStorage.setItem('token', data.token);
+            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
             const loggedInUser = { username: data.username, email: data.email };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
@@ -24,9 +25,10 @@ export function AuthProvider({ children }) {
     };
 
     const logout = async () => {
-        const sessionId = localStorage.getItem('sessionId');
-        try { await api.post('/auth/logout', { sessionId }); } catch (_) {}
+        const refreshToken = localStorage.getItem('refreshToken');
+        try { await api.post('/auth/logout', { sessionId, refreshToken }); } catch (_) {}
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
         localStorage.removeItem('sessionId');
         useStore.getState().resetStore();
@@ -44,6 +46,7 @@ export function AuthProvider({ children }) {
             
             // Set initial temp token
             localStorage.setItem('token', data.token);
+            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
             
             return data; // { allowedRoles, user }
         } catch (error) {
@@ -58,6 +61,7 @@ export function AuthProvider({ children }) {
             if (!data?.token) throw new Error('Invalid response from server');
             
             localStorage.setItem('token', data.token);
+            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
             localStorage.setItem('sessionId', String(data.sessionId || ''));
             localStorage.setItem('role', data.role);
             

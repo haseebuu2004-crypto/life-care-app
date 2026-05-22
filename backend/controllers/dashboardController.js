@@ -1,7 +1,7 @@
-const db = require('../config/db');
+const pool = require('../config/db');
 const { getOwnerId } = require('../middleware/authMiddleware');
 
-exports.getStats = (req, res) => {
+exports.getStats = async (req, res) => {
     try {
         const stats = {
             totals: {
@@ -22,108 +22,109 @@ exports.getStats = (req, res) => {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const ownerId = getOwnerId(req);
 
-        db.serialize(() => {
-            // 1. Totals (Sales & VP)
-            db.get(`SELECT SUM(total_profit) as totalProfit FROM sales WHERE owner_id = ?`, [ownerId], (err, row1) => {
-                db.get(`SELECT SUM(pv.vp * si.qty) as totalVp FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = ?`, [ownerId], (err, row2) => {
-                    stats.totals.totalSalesProfit = row1?.totalProfit || 0;
-                    stats.totals.totalVpSold = row2?.totalVp || 0;
+        const res1 = await pool.query(`SELECT SUM(total_profit) as "totalProfit" FROM sales WHERE owner_id = $1`, [ownerId]);
+        const res2 = await pool.query(`SELECT SUM(pv.vp * si.qty) as "totalVp" FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1`, [ownerId]);
+        
+        stats.totals.totalSalesProfit = res1.rows[0]?.totalProfit || 0;
+        stats.totals.totalVpSold = res2.rows[0]?.totalVp || 0;
 
-                // 2. Stock Totals
-                db.get(`
-                    SELECT 
-                        SUM(pv.sp * s.qty) as stockValue,
-                        COUNT(CASE WHEN s.qty < 5 THEN 1 END) as lowStock
-                    FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
-                    WHERE s.owner_id = ?
-                `, [ownerId], (err, row) => {
-                    if (row) {
-                        stats.totals.totalStockValue = row.stockValue || 0;
-                        stats.totals.lowStockCount = row.lowStock || 0;
-                    }
+        const res3 = await pool.query(`
+            SELECT 
+                SUM(pv.sp * s.qty) as "stockValue",
+                COUNT(CASE WHEN s.qty < 5 THEN 1 END) as "lowStock"
+            FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
+            WHERE s.owner_id = $1
+        `, [ownerId]);
+        
+        if (res3.rows.length > 0) {
+            stats.totals.totalStockValue = res3.rows[0].stockValue || 0;
+            stats.totals.lowStockCount = parseInt(res3.rows[0].lowStock || 0);
+        }
 
-                    // 3. Low Stock Items
-                    db.all(`
-                        SELECT s.id, p.name as product_name, pv.flavor, s.qty
-                        FROM stock s
-                        JOIN product_variants pv ON s.variant_id = pv.id
-                        JOIN products p ON pv.product_id = p.id
-                        WHERE s.qty < 5 AND s.owner_id = ?
-                        ORDER BY s.qty ASC
-                    `, [ownerId], (err, rows) => {
-                        stats.lowStockItems = rows || [];
+        const res4 = await pool.query(`
+            SELECT s.id, p.name as product_name, pv.flavor, s.qty
+            FROM stock s
+            JOIN product_variants pv ON s.variant_id = pv.id
+            JOIN products p ON pv.product_id = p.id
+            WHERE s.qty < 5 AND s.owner_id = $1
+            ORDER BY s.qty ASC
+        `, [ownerId]);
+        stats.lowStockItems = res4.rows || [];
 
-                        // 4. Monthly Product Sales
-                        db.all(`
-                            SELECT p.name, SUM(si.qty) as qty
-                            FROM sale_items si
-                            JOIN sales s ON si.sale_id = s.id
-                            JOIN product_variants pv ON si.variant_id = pv.id
-                            JOIN products p ON pv.product_id = p.id
-                            WHERE s.date >= ? AND s.owner_id = ?
-                            GROUP BY p.name
-                            ORDER BY qty DESC
-                        `, [firstDay, ownerId], (err, rows) => {
-                            stats.monthlyProductSales = rows || [];
-                            if (rows && rows.length > 0) stats.totals.topSeller = rows[0].name;
+        const res5 = await pool.query(`
+            SELECT p.name, SUM(si.qty) as qty
+            FROM sale_items si
+            JOIN sales s ON si.sale_id = s.id
+            JOIN product_variants pv ON si.variant_id = pv.id
+            JOIN products p ON pv.product_id = p.id
+            WHERE s.date >= $1 AND s.owner_id = $2
+            GROUP BY p.name
+            ORDER BY qty DESC
+        `, [firstDay, ownerId]);
+        
+        stats.monthlyProductSales = res5.rows || [];
+        if (stats.monthlyProductSales.length > 0) stats.totals.topSeller = stats.monthlyProductSales[0].name;
 
-                            // 5. Top Customers by Profit
-                            db.all(`
-                                SELECT customer as name, SUM(total_profit) as profit
-                                FROM sales
-                                WHERE owner_id = ?
-                                GROUP BY customer
-                                ORDER BY profit DESC
-                                LIMIT 10
-                            `, [ownerId], (err, rows) => {
-                                stats.topCustomers = rows || [];
+        const res6 = await pool.query(`
+            SELECT customer as name, SUM(total_profit) as profit
+            FROM sales
+            WHERE owner_id = $1
+            GROUP BY customer
+            ORDER BY profit DESC
+            LIMIT 10
+        `, [ownerId]);
+        stats.topCustomers = res6.rows || [];
 
-                                // 6. Shake Profit Details (Aggregated)
-                                db.all(`
-                                    SELECT name, COUNT(*) as attendance, AVG(shake_profit) as profitPerDay, SUM(shake_profit) as totalProfit
-                                    FROM attendance
-                                    WHERE status = 'Present' AND owner_id = ?
-                                    GROUP BY name
-                                    ORDER BY totalProfit DESC
-                                `, [ownerId], (err, rows) => {
-                                    stats.shakeProfitDetails = rows || [];
-                                    stats.totals.totalShakeProfit = (rows || []).reduce((acc, curr) => acc + curr.totalProfit, 0);
+        const res7 = await pool.query(`
+            SELECT name, COUNT(*) as attendance, AVG(shake_profit) as "profitPerDay", SUM(shake_profit) as "totalProfit"
+            FROM attendance
+            WHERE status = 'Present' AND owner_id = $1
+            GROUP BY name
+            ORDER BY "totalProfit" DESC
+        `, [ownerId]);
+        
+        stats.shakeProfitDetails = res7.rows || [];
+        stats.totals.totalShakeProfit = (stats.shakeProfitDetails).reduce((acc, curr) => acc + (parseFloat(curr.totalProfit) || 0), 0);
 
-                                    res.json({ success: true, data: stats });
-                                });
-                            });
-                        });
-                    });
-                });
-                });
-            });
-        });
+        res.json({ success: true, data: stats });
+
     } catch (error) {
+        console.error("Dashboard Stats Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-exports.resetData = (req, res) => {
+exports.resetData = async (req, res) => {
+    const ownerId = getOwnerId(req);
+    const { password } = req.body;
+    
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword) {
+        throw new Error("CRITICAL: ADMIN_PASSWORD environment variable is missing.");
+    }
+    
+    if (!password || password !== adminPassword) {
+        return res.status(401).json({ success: false, message: "Invalid Admin Password. Factory reset aborted." });
+    }
+
+    const client = await pool.connect();
     try {
-        const ownerId = getOwnerId(req);
-        db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
-            db.run('DELETE FROM sale_items WHERE owner_id = ?', [ownerId]);
-            db.run('DELETE FROM sales WHERE owner_id = ?', [ownerId]);
-            db.run('DELETE FROM stock WHERE owner_id = ?', [ownerId]);
-            db.run('DELETE FROM product_variants WHERE owner_id = ?', [ownerId]);
-            db.run('DELETE FROM products WHERE owner_id = ?', [ownerId]);
-            db.run('DELETE FROM attendance WHERE owner_id = ?', [ownerId]);
-            db.run('COMMIT', (err) => {
-                if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ success: false, message: "Failed to reset data." });
-                }
-                res.json({ success: true, message: "All data has been permanently deleted." });
-            });
-        });
+        await client.query('BEGIN');
+        await client.query('DELETE FROM sale_items WHERE owner_id = $1', [ownerId]);
+        await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
+        await client.query('DELETE FROM stock WHERE owner_id = $1', [ownerId]);
+        await client.query('DELETE FROM product_variants WHERE owner_id = $1', [ownerId]);
+        await client.query('DELETE FROM products WHERE owner_id = $1', [ownerId]);
+        await client.query('DELETE FROM attendance WHERE owner_id = $1', [ownerId]);
+        await client.query('COMMIT');
+        
+        res.json({ success: true, message: "All data has been permanently deleted." });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        await client.query('ROLLBACK');
+        console.error("Reset Data Error:", error);
+        res.status(500).json({ success: false, message: "Failed to reset data." });
+    } finally {
+        client.release();
     }
 };
 
@@ -152,25 +153,21 @@ exports.exportReport = async (req, res) => {
         doc.moveDown(2);
 
         // Fetch data
-        const getSales = () => new Promise((resolve, reject) => {
-            db.all(`SELECT s.date, s.customer, p.name as product, pv.flavor, si.qty, (pv.sp * si.qty) as amount, si.profit 
+        const getSales = async () => {
+            const { rows } = await pool.query(`SELECT s.date, s.customer, p.name as product, pv.flavor, si.qty, (pv.sp * si.qty) as amount, si.profit 
                     FROM sale_items si 
                     JOIN sales s ON si.sale_id = s.id 
                     LEFT JOIN product_variants pv ON si.variant_id = pv.id 
                     LEFT JOIN products p ON pv.product_id = p.id
-                    WHERE s.owner_id = ?
-                    ORDER BY s.date DESC`, [ownerId], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
-            });
-        });
+                    WHERE s.owner_id = $1
+                    ORDER BY s.date DESC`, [ownerId]);
+            return rows;
+        };
 
-        const getAttendance = () => new Promise((resolve, reject) => {
-            db.all(`SELECT date, name, status, shake_profit FROM attendance WHERE owner_id = ? ORDER BY date DESC`, [ownerId], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
-            });
-        });
+        const getAttendance = async () => {
+            const { rows } = await pool.query(`SELECT date, name, status, shake_profit FROM attendance WHERE owner_id = $1 ORDER BY date DESC`, [ownerId]);
+            return rows;
+        };
 
         let sales = [];
         let attendance = [];
@@ -182,13 +179,16 @@ exports.exportReport = async (req, res) => {
         const grouped = {};
         
         sales.forEach(s => {
-            if (!grouped[s.date]) grouped[s.date] = { sales: [], attendance: [] };
-            grouped[s.date].sales.push(s);
+            // Postgres TIMESTAMP might return Date objects, so we need to format to YYYY-MM-DD
+            const dateStr = s.date instanceof Date ? s.date.toISOString().split('T')[0] : String(s.date).split('T')[0];
+            if (!grouped[dateStr]) grouped[dateStr] = { sales: [], attendance: [] };
+            grouped[dateStr].sales.push(s);
         });
 
         attendance.forEach(a => {
-            if (!grouped[a.date]) grouped[a.date] = { sales: [], attendance: [] };
-            grouped[a.date].attendance.push(a);
+            const dateStr = a.date instanceof Date ? a.date.toISOString().split('T')[0] : String(a.date).split('T')[0];
+            if (!grouped[dateStr]) grouped[dateStr] = { sales: [], attendance: [] };
+            grouped[dateStr].attendance.push(a);
         });
 
         const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
@@ -217,7 +217,6 @@ exports.exportReport = async (req, res) => {
             // Draw Rows
             doc.font('Helvetica').fontSize(10).fillColor('#212529');
             rowsData.forEach((row, rowIndex) => {
-                // Check page break for row
                 if (doc.y > doc.page.height - doc.page.margins.bottom - 20) {
                     doc.addPage();
                     doc.y = doc.page.margins.top;
@@ -234,9 +233,8 @@ exports.exportReport = async (req, res) => {
                     currentX += colWidths[i];
                 });
                 
-                doc.y = startY + 22; // Fixed row height
+                doc.y = startY + 22;
                 
-                // Soft separator
                 doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.margins.left + contentWidth, doc.y).lineWidth(0.5).stroke('#f1f3f5');
             });
             doc.moveDown(0.5);
@@ -247,14 +245,12 @@ exports.exportReport = async (req, res) => {
         }
 
         dates.forEach((date, idx) => {
-            // Prevent blank pages by ensuring we only add page if we are not already near top
             if (doc.y > doc.page.height - 180 && doc.y > doc.page.margins.top + 50) {
                 doc.addPage();
             } else if (idx > 0) {
                 doc.moveDown(1.5);
             }
 
-            // Date Header
             const dateStr = date.split('-').reverse().join('/');
             doc.rect(doc.page.margins.left, doc.y, contentWidth, 28).fill('#f1f3f5');
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#212529').text(`DATE: ${dateStr}`, doc.page.margins.left + 12, doc.y + 8);
@@ -272,7 +268,7 @@ exports.exportReport = async (req, res) => {
                 const attWidths = [contentWidth * 0.5, contentWidth * 0.3, contentWidth * 0.2];
                 const attRows = data.attendance.map(a => {
                     if (a.status === 'Present') dailyAttendanceCount++;
-                    dailyProfit += (a.shake_profit || 0);
+                    dailyProfit += (parseFloat(a.shake_profit) || 0);
                     return [a.name, a.status, `Rs. ${a.shake_profit || 0}`];
                 });
                 drawTable('Attendance', attHeaders, attRows, attWidths);
@@ -282,8 +278,8 @@ exports.exportReport = async (req, res) => {
                 const saleHeaders = ['Customer', 'Product', 'Qty', 'Amount', 'Profit'];
                 const saleWidths = [contentWidth * 0.28, contentWidth * 0.35, contentWidth * 0.1, contentWidth * 0.13, contentWidth * 0.14];
                 const saleRows = data.sales.map(s => {
-                    dailySalesAmount += (s.amount || 0);
-                    dailyProfit += (s.profit || 0);
+                    dailySalesAmount += (parseFloat(s.amount) || 0);
+                    dailyProfit += (parseFloat(s.profit) || 0);
                     return [
                         s.customer, 
                         `${s.product || 'N/A'} ${s.flavor ? '('+s.flavor+')' : ''}`, 
@@ -295,7 +291,6 @@ exports.exportReport = async (req, res) => {
                 drawTable('Sales', saleHeaders, saleRows, saleWidths);
             }
 
-            // Daily Summary
             if (doc.y > doc.page.height - 120 && doc.y > doc.page.margins.top + 50) {
                 doc.addPage();
             }
@@ -325,7 +320,6 @@ exports.exportReport = async (req, res) => {
             doc.y = summaryY + 20;
         });
 
-        // Footer
         let pages = doc.bufferedPageRange ? doc.bufferedPageRange().count : 1;
         
         const generatedDate = new Date();
@@ -341,91 +335,71 @@ exports.exportReport = async (req, res) => {
         
         doc.end();
     } catch (error) {
+        console.error("Export Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-exports.clearAttendanceData = (req, res) => {
+exports.clearAttendanceData = async (req, res) => {
+    const { month } = req.body;
+    const ownerId = getOwnerId(req);
+    const client = await pool.connect();
     try {
-        const { month } = req.body;
-        const ownerId = getOwnerId(req);
+        await client.query('BEGIN');
         
-        db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
-            
-            let query = 'DELETE FROM attendance WHERE owner_id = ?';
-            let params = [ownerId];
-            
-            if (month) {
-                query += ' AND strftime("%Y-%m", date) = ?';
-                params.push(month);
-            }
-            
-            db.run(query, params, function(err) {
-                if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ success: false, message: "Failed to clear attendance data." });
-                }
-                db.run('COMMIT', (err) => {
-                    if (err) {
-                        db.run('ROLLBACK');
-                        return res.status(500).json({ success: false, message: "Failed to commit transaction." });
-                    }
-                    res.json({ success: true, message: `Attendance data cleared successfully${month ? ` for ${month}` : ''}.` });
-                });
-            });
-        });
+        let query = 'DELETE FROM attendance WHERE owner_id = $1';
+        let params = [ownerId];
+        
+        if (month) {
+            query += " AND TO_CHAR(date, 'YYYY-MM') = $2";
+            params.push(month);
+        }
+        
+        await client.query(query, params);
+        await client.query('COMMIT');
+        
+        res.json({ success: true, message: `Attendance data cleared successfully${month ? ` for ${month}` : ''}.` });
     } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Clear Attendance Error:", error);
         res.status(500).json({ success: false, message: error.message });
+    } finally {
+        client.release();
     }
 };
 
-exports.clearSalesData = (req, res) => {
+exports.clearSalesData = async (req, res) => {
+    const { month } = req.body;
+    const ownerId = getOwnerId(req);
+    const client = await pool.connect();
+    
     try {
-        const { month } = req.body;
-        const ownerId = getOwnerId(req);
+        await client.query('BEGIN');
         
-        db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
+        let saleQuery = 'DELETE FROM sales WHERE owner_id = $1';
+        let saleParams = [ownerId];
+        
+        let itemQuery = 'DELETE FROM sale_items WHERE owner_id = $1';
+        let itemParams = [ownerId];
+        
+        if (month) {
+            saleQuery += " AND TO_CHAR(date, 'YYYY-MM') = $2";
+            saleParams.push(month);
             
-            let query = 'DELETE FROM sales WHERE owner_id = ?';
-            let params = [ownerId];
-            
-            if (month) {
-                query += ' AND strftime("%Y-%m", date) = ?';
-                params.push(month);
-            }
-            
-            let itemQuery = 'DELETE FROM sale_items WHERE owner_id = ?';
-            let itemParams = [ownerId];
-            if (month) {
-                itemQuery = 'DELETE FROM sale_items WHERE owner_id = ? AND sale_id IN (SELECT id FROM sales WHERE strftime("%Y-%m", date) = ? AND owner_id = ?)';
-                itemParams = [ownerId, month, ownerId];
-            }
-            
-            db.run(itemQuery, itemParams, function(err) {
-                if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ success: false, message: "Failed to clear sale items." });
-                }
-                
-                db.run(query, params, function(err) {
-                    if (err) {
-                        db.run('ROLLBACK');
-                        return res.status(500).json({ success: false, message: "Failed to clear sales data." });
-                    }
-                    
-                    db.run('COMMIT', (err) => {
-                        if (err) {
-                            db.run('ROLLBACK');
-                            return res.status(500).json({ success: false, message: "Failed to commit transaction." });
-                        }
-                        res.json({ success: true, message: `Sales data cleared successfully${month ? ` for ${month}` : ''}.` });
-                    });
-                });
-            });
-        });
+            itemQuery = "DELETE FROM sale_items WHERE owner_id = $1 AND sale_id IN (SELECT id FROM sales WHERE TO_CHAR(date, 'YYYY-MM') = $2 AND owner_id = $3)";
+            itemParams = [ownerId, month, ownerId];
+        }
+        
+        await client.query(itemQuery, itemParams);
+        await client.query(saleQuery, saleParams);
+        
+        await client.query('COMMIT');
+        res.json({ success: true, message: `Sales data cleared successfully${month ? ` for ${month}` : ''}.` });
     } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Clear Sales Error:", error);
         res.status(500).json({ success: false, message: error.message });
+    } finally {
+        client.release();
     }
 };

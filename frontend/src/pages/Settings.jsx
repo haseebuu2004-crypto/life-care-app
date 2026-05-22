@@ -11,9 +11,10 @@ export function Settings() {
 
     const handleReset = async () => {
         if (!window.confirm("CRITICAL WARNING: This will permanently delete ALL sales, stock, and attendance data. Proceed?")) return;
-        if (!window.prompt("Type 'RESET' to confirm.") === 'RESET') return;
+        const pwd = window.prompt("To proceed, enter your Admin Password:");
+        if (!pwd) return;
         try {
-            await resetData();
+            await resetData(pwd);
         } catch (e) {
             console.error(e);
         }

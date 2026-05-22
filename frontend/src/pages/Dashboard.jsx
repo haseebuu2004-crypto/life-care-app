@@ -18,7 +18,7 @@ function AdminMetricCard({ icon: Icon, title, value, color, subtitle }) {
     );
 }
 
-function OverviewInner() {
+function DashboardInner() {
     const { stock, sales, attendance, dashboardStats, isLoading, resetData, exportReport, showToast } = useStore();
     const perm = usePermissions();
     const [isExporting, setIsExporting] = useState(false);
@@ -125,9 +125,12 @@ function OverviewInner() {
         if (!confirm1) return;
         const confirm2 = window.confirm("FINAL WARNING: All stock, sales, attendance and product data will be erased. This action CANNOT be undone. Proceed?");
         if (!confirm2) return;
+        
+        const pwd = window.prompt("To proceed, enter your Admin Password:");
+        if (!pwd) return;
 
         try {
-            await resetData();
+            await resetData(pwd);
             showToast("All data successfully reset", "success");
         } catch (err) {
             showToast(err.message || "Failed to reset data", "error");
@@ -299,10 +302,10 @@ function OverviewInner() {
     );
 }
 
-export function Overview() {
+export function Dashboard() {
     return (
         <ErrorBoundary>
-            <OverviewInner />
+            <DashboardInner />
         </ErrorBoundary>
     );
 }

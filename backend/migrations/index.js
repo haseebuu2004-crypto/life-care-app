@@ -1,71 +1,50 @@
 const fs = require('fs');
 const path = require('path');
 
-function runMigrations(db) {
-    return new Promise((resolve, reject) => {
-        db.serialize(() => {
-            db.run(`CREATE TABLE IF NOT EXISTS migrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`, (err) => {
-                if (err) {
-                    console.error("Migration Error: Failed to create migrations table", err);
-                    return reject(err);
-                }
+async function runMigrations(pool) {
+    try {
+        await pool.query(`CREATE TABLE IF NOT EXISTS migrations (
+            id SERIAL PRIMARY KEY,
+            name TEXT UNIQUE,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
 
-                db.all(`SELECT name FROM migrations`, [], (err, rows) => {
-                    if (err) return reject(err);
+        const { rows } = await pool.query(`SELECT name FROM migrations`);
+        const executedMigrations = rows.map(r => r.name);
+        const migrationsDir = __dirname;
+        
+        const files = fs.readdirSync(migrationsDir);
+        
+        // Get all .js files except index.js, sort them alphabetically
+        const migrationFiles = files
+            .filter(f => f.endsWith('.js') && f !== 'index.js')
+            .sort();
 
-                    const executedMigrations = rows.map(r => r.name);
-                    const migrationsDir = __dirname;
-                    
-                    fs.readdir(migrationsDir, (err, files) => {
-                        if (err) return reject(err);
+        const pendingMigrations = migrationFiles.filter(f => !executedMigrations.includes(f));
 
-                        // Get all .js files except index.js, sort them alphabetically
-                        const migrationFiles = files
-                            .filter(f => f.endsWith('.js') && f !== 'index.js')
-                            .sort();
+        if (pendingMigrations.length === 0) {
+            return;
+        }
 
-                        let pendingMigrations = migrationFiles.filter(f => !executedMigrations.includes(f));
+        console.log(`Found ${pendingMigrations.length} pending migrations.`);
 
-                        if (pendingMigrations.length === 0) {
-                            return resolve();
-                        }
-
-                        console.log(`Found ${pendingMigrations.length} pending migrations.`);
-
-                        const processNext = (index) => {
-                            if (index >= pendingMigrations.length) {
-                                return resolve();
-                            }
-
-                            const filename = pendingMigrations[index];
-                            const migration = require(path.join(migrationsDir, filename));
-                            
-                            console.log(`Running migration: ${filename}`);
-                            
-                            migration.up(db)
-                                .then(() => {
-                                    db.run(`INSERT INTO migrations (name) VALUES (?)`, [filename], (err) => {
-                                        if (err) return reject(err);
-                                        console.log(`✅ Migration completed: ${filename}`);
-                                        processNext(index + 1);
-                                    });
-                                })
-                                .catch(err => {
-                                    console.error(`❌ Migration failed: ${filename}`, err);
-                                    reject(err);
-                                });
-                        };
-
-                        processNext(0);
-                    });
-                });
-            });
-        });
-    });
+        for (const filename of pendingMigrations) {
+            const migration = require(path.join(migrationsDir, filename));
+            console.log(`Running migration: ${filename}`);
+            
+            try {
+                await migration.up(pool);
+                await pool.query(`INSERT INTO migrations (name) VALUES ($1)`, [filename]);
+                console.log(`✅ Migration completed: ${filename}`);
+            } catch (err) {
+                console.error(`❌ Migration failed: ${filename}`, err);
+                throw err;
+            }
+        }
+    } catch (err) {
+        console.error("Migration Error:", err);
+        throw err;
+    }
 }
 
 module.exports = runMigrations;

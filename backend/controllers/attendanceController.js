@@ -29,7 +29,19 @@ exports.markAttendance = async (req, res) => {
             }
         }
 
-        await attendanceService.markAttendanceRecord(date, normalizedName, status, finalShakeProfit, getOwnerId(req));
+        const ownerId = getOwnerId(req);
+        
+        // Check for duplicates
+        const { rows: existing } = await require('../config/db').query(
+            'SELECT id FROM attendance WHERE DATE(date) = DATE($1) AND name = $2 AND owner_id = $3', 
+            [date, normalizedName, ownerId]
+        );
+
+        if (existing.length > 0) {
+            return res.status(400).json({ success: false, message: "Attendance already marked for this user today." });
+        }
+
+        await attendanceService.markAttendanceRecord(date, normalizedName, status, finalShakeProfit, ownerId);
         res.json({ success: true, data: { message: 'Attendance logged successfully' } });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

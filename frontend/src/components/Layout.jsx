@@ -42,7 +42,7 @@ export function Layout({ children }) {
             <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">🥗 Life Care</div>
                 <nav style={{ flex: 1, padding: '20px 0' }}>
-                    {perm.isAdmin && <NavLink to="/overview" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><LayoutDashboard size={20}/> Overview</NavLink>}
+                    {perm.isAdmin && <NavLink to="/" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><LayoutDashboard size={20}/> Dashboard</NavLink>}
                     <NavLink to="/stock" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Package size={20}/> Stock</NavLink>
                     <NavLink to="/sales" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><DollarSign size={20}/> Sales</NavLink>
                     <NavLink to="/attendance" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Calendar size={20}/> Attendance</NavLink>

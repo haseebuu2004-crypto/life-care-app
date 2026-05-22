@@ -20,12 +20,11 @@ router.get('/reports/export', authenticateToken, dashboardController.exportRepor
 router.delete('/data-management/attendance', authenticateToken, dashboardController.clearAttendanceData);
 router.delete('/data-management/sales', authenticateToken, dashboardController.clearSalesData);
 
-// Protect Profit APIs as requested
-router.get('/dashboard/profit', authenticateToken, dashboardController.getProfit || ((req, res) => res.json({})));
-router.get('/dashboard/shake-profit', authenticateToken, dashboardController.getShakeProfit || ((req, res) => res.json({})));
+// Protect Profit APIs as requested (Removed - Handled by /dashboard/stats)
 
 // Auth
 router.post('/auth/login', authController.login);
+router.post('/auth/refresh', authController.refreshToken);
 router.post('/auth/google', authController.googleLogin);
 router.post('/auth/select-role', authenticateToken, authController.selectRole);
 router.post('/auth/logout', authenticateToken, authController.logout);

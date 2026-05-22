@@ -4,7 +4,8 @@
   "description": "Life Care Manager App",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node backend/server.js",
+    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -12,6 +13,7 @@
     "dotenv": "^17.4.1",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
+    "pg": "^8.21.0",
     "sqlite3": "^6.0.1",
     "uuid": "^10.0.0"
   }
