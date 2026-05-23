@@ -117,7 +117,7 @@ function DashboardInner() {
     }, [stock, sales, attendance, dashboardStats]);
 
     if (!perm.canViewOverview) {
-        return <Navigate to="/" replace />;
+        return <Navigate to="/sales" replace />;
     }
 
     const handleReset = async () => {
