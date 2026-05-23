@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { getOwnerId } = require('../middleware/authMiddleware');
+const bcrypt = require('bcryptjs');
 
 exports.getStats = async (req, res) => {
     try {
@@ -98,12 +99,17 @@ exports.resetData = async (req, res) => {
         const ownerId = getOwnerId(req);
         const { password } = req.body;
         
-        const adminPassword = process.env.ADMIN_PASSWORD;
-        if (!adminPassword) {
-            return res.status(500).json({ success: false, message: "Configuration Error: ADMIN_PASSWORD is not set in the server environment." });
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: "Permission denied. Only admins can perform a factory reset." });
+        }
+
+        const { rows } = await pool.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: "Admin user not found." });
         }
         
-        if (!password || password !== adminPassword) {
+        const isMatch = await bcrypt.compare(password, rows[0].password);
+        if (!isMatch) {
             return res.status(401).json({ success: false, message: "Invalid Admin Password. Factory reset aborted." });
         }
 
