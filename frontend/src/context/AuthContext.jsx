@@ -55,27 +55,69 @@ export function AuthProvider({ children }) {
         }
     };
 
-    const selectFinalRole = async (selectedRole, password) => {
+    const selectRole = async (selectedRole) => {
         try {
-            const { data } = await api.post('/auth/select-role', { selectedRole, password });
-            if (!data?.token) throw new Error('Invalid response from server');
-            
-            localStorage.setItem('token', data.token);
-            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-            localStorage.setItem('sessionId', String(data.sessionId || ''));
-            localStorage.setItem('role', data.role);
-            
-            const loggedInUser = { ...data.user, role: data.role };
-            localStorage.setItem('user', JSON.stringify(loggedInUser));
-            setUser(loggedInUser);
+            const { data } = await api.post('/auth/select-role', { selectedRole });
+            return data; // { success, hasPassword }
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Role selection failed';
             throw new Error(msg);
         }
     };
 
+    const _finalizeAuth = (data) => {
+        if (!data?.token) throw new Error('Invalid response from server');
+        localStorage.setItem('token', data.token);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+        localStorage.setItem('sessionId', String(data.sessionId || ''));
+        localStorage.setItem('role', data.role);
+        const loggedInUser = { ...data.user, role: data.role };
+        localStorage.setItem('user', JSON.stringify(loggedInUser));
+        setUser(loggedInUser);
+    };
+
+    const verifyPassword = async (selectedRole, password) => {
+        try {
+            const { data } = await api.post('/auth/verify-password', { selectedRole, password });
+            _finalizeAuth(data);
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Password verification failed';
+            throw new Error(msg);
+        }
+    };
+
+    const setPassword = async (selectedRole, password) => {
+        try {
+            const { data } = await api.post('/auth/set-password', { selectedRole, password });
+            _finalizeAuth(data);
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Password creation failed';
+            throw new Error(msg);
+        }
+    };
+
+    const forgotPassword = async (selectedRole) => {
+        try {
+            const { data } = await api.post('/auth/forgot-password', { selectedRole });
+            return data;
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Forgot password failed';
+            throw new Error(msg);
+        }
+    };
+
+    const resetPassword = async (token, newPassword) => {
+        try {
+            const { data } = await api.post('/auth/reset-password', { token, newPassword });
+            return data;
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Reset password failed';
+            throw new Error(msg);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, googleLogin, selectFinalRole }}>
+        <AuthContext.Provider value={{ user, login, logout, googleLogin, selectRole, verifyPassword, setPassword, forgotPassword, resetPassword }}>
             {children}
         </AuthContext.Provider>
     );

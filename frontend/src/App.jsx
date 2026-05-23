@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
+import { ResetPassword } from './pages/ResetPassword';
 import { Dashboard } from './pages/Dashboard';
 import { Stock } from './pages/Stock';
 import { Sales } from './pages/Sales';
@@ -23,6 +24,7 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/reset-password/:token" element={<ResetPassword />} />
                 
                 {/* Protected Routes wrapped in Layout */}
                 <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

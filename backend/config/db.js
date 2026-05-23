@@ -38,9 +38,21 @@ async function createTables() {
             google_id VARCHAR(255),
             auth_provider VARCHAR(50) DEFAULT 'local',
             owner_id VARCHAR(255),
+            reset_token VARCHAR(255),
+            reset_token_expiry TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(username, owner_id)
         )`);
+
+        // Add columns if they are missing (for existing databases)
+        try {
+            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(255)`);
+            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expiry TIMESTAMP`);
+            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+        } catch (alterErr) {
+            console.error("Error altering users table (columns might already exist)", alterErr);
+        }
 
         // Seed users
         const { rows: adminRows } = await client.query(`SELECT id FROM users WHERE username = $1`, ['admin']);

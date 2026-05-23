@@ -27,6 +27,10 @@ router.post('/auth/login', authController.login);
 router.post('/auth/refresh', authController.refreshToken);
 router.post('/auth/google', authController.googleLogin);
 router.post('/auth/select-role', authenticateToken, authController.selectRole);
+router.post('/auth/set-password', authenticateToken, authController.setPassword);
+router.post('/auth/verify-password', authenticateToken, authController.verifyPassword);
+router.post('/auth/forgot-password', authenticateToken, authController.forgotPassword);
+router.post('/auth/reset-password', authController.resetPassword);
 router.post('/auth/logout', authenticateToken, authController.logout);
 router.get('/login-history', authenticateToken, authController.getLoginHistory);
 
