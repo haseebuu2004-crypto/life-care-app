@@ -99,13 +99,14 @@ exports.resetData = async (req, res) => {
         const ownerId = getOwnerId(req);
         const { password } = req.body;
         
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ success: false, message: "Permission denied. Only admins can perform a factory reset." });
-        }
-
-        const { rows } = await pool.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+        const { rows } = await pool.query('SELECT role, password FROM users WHERE id = $1', [req.user.id]);
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: "Admin user not found." });
+        }
+        
+        const currentRole = rows[0].role;
+        if (currentRole !== 'admin') {
+            return res.status(403).json({ success: false, message: "Permission denied. Only admins can perform a factory reset." });
         }
         
         const isMatch = await bcrypt.compare(password, rows[0].password);
