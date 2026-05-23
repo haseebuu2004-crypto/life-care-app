@@ -104,9 +104,10 @@ exports.resetData = async (req, res) => {
             return res.status(404).json({ success: false, message: "Admin user not found." });
         }
         
-        const currentRole = rows[0].role;
+        const rawRole = rows[0].role;
+        const currentRole = String(rawRole || '').toLowerCase().trim();
         if (currentRole !== 'admin') {
-            return res.status(403).json({ success: false, message: "Permission denied. Only admins can perform a factory reset." });
+            return res.status(403).json({ success: false, message: `Permission denied. Your current role is '${rawRole}', but 'admin' is required.` });
         }
         
         const isMatch = await bcrypt.compare(password, rows[0].password);
