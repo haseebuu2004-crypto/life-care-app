@@ -56,6 +56,7 @@ router.delete('/stock/:id', authenticateToken, stockController.deleteStock);
 router.get('/sales', authenticateToken, salesController.getSales);
 router.post('/sales', authenticateToken, salesController.addSale);
 router.delete('/sales/:id', authenticateToken, salesController.deleteSale);
+router.delete('/sales/item/:itemId', authenticateToken, salesController.deleteSaleItem);
 
 // Attendance
 router.get('/attendance', authenticateToken, attendanceController.getAttendance);

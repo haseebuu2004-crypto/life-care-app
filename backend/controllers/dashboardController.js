@@ -22,67 +22,66 @@ exports.getStats = async (req, res) => {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const ownerId = getOwnerId(req);
 
-        const res1 = await pool.query(`SELECT SUM(total_profit) as "totalProfit" FROM sales WHERE owner_id = $1`, [ownerId]);
-        const res2 = await pool.query(`SELECT SUM(pv.vp * si.qty) as "totalVp" FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1`, [ownerId]);
-        
+        const [res1, res2, res3, res4, res5, res6, res7] = await Promise.all([
+            pool.query(`SELECT SUM(total_profit) as "totalProfit" FROM sales WHERE owner_id = $1`, [ownerId]),
+            pool.query(`SELECT SUM(pv.vp * si.qty) as "totalVp" FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1`, [ownerId]),
+            pool.query(`
+                SELECT 
+                    SUM(pv.sp * s.qty) as "stockValue",
+                    COUNT(CASE WHEN s.qty < 5 THEN 1 END) as "lowStock"
+                FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
+                WHERE s.owner_id = $1
+            `, [ownerId]),
+            pool.query(`
+                SELECT s.id, p.name as product_name, pv.flavor, s.qty
+                FROM stock s
+                JOIN product_variants pv ON s.variant_id = pv.id
+                JOIN products p ON pv.product_id = p.id
+                WHERE s.qty < 5 AND s.owner_id = $1
+                ORDER BY s.qty ASC
+            `, [ownerId]),
+            pool.query(`
+                SELECT p.name, SUM(si.qty) as qty
+                FROM sale_items si
+                JOIN sales s ON si.sale_id = s.id
+                JOIN product_variants pv ON si.variant_id = pv.id
+                JOIN products p ON pv.product_id = p.id
+                WHERE s.date >= $1 AND s.owner_id = $2
+                GROUP BY p.name
+                ORDER BY qty DESC
+            `, [firstDay, ownerId]),
+            pool.query(`
+                SELECT customer as name, SUM(total_profit) as profit
+                FROM sales
+                WHERE owner_id = $1
+                GROUP BY customer
+                ORDER BY profit DESC
+                LIMIT 10
+            `, [ownerId]),
+            pool.query(`
+                SELECT name, COUNT(*) as attendance, AVG(shake_profit) as "profitPerDay", SUM(shake_profit) as "totalProfit"
+                FROM attendance
+                WHERE status = 'Present' AND owner_id = $1
+                GROUP BY name
+                ORDER BY "totalProfit" DESC
+            `, [ownerId])
+        ]);
+
         stats.totals.totalSalesProfit = res1.rows[0]?.totalProfit || 0;
         stats.totals.totalVpSold = res2.rows[0]?.totalVp || 0;
 
-        const res3 = await pool.query(`
-            SELECT 
-                SUM(pv.sp * s.qty) as "stockValue",
-                COUNT(CASE WHEN s.qty < 5 THEN 1 END) as "lowStock"
-            FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
-            WHERE s.owner_id = $1
-        `, [ownerId]);
-        
         if (res3.rows.length > 0) {
             stats.totals.totalStockValue = res3.rows[0].stockValue || 0;
             stats.totals.lowStockCount = parseInt(res3.rows[0].lowStock || 0);
         }
 
-        const res4 = await pool.query(`
-            SELECT s.id, p.name as product_name, pv.flavor, s.qty
-            FROM stock s
-            JOIN product_variants pv ON s.variant_id = pv.id
-            JOIN products p ON pv.product_id = p.id
-            WHERE s.qty < 5 AND s.owner_id = $1
-            ORDER BY s.qty ASC
-        `, [ownerId]);
         stats.lowStockItems = res4.rows || [];
 
-        const res5 = await pool.query(`
-            SELECT p.name, SUM(si.qty) as qty
-            FROM sale_items si
-            JOIN sales s ON si.sale_id = s.id
-            JOIN product_variants pv ON si.variant_id = pv.id
-            JOIN products p ON pv.product_id = p.id
-            WHERE s.date >= $1 AND s.owner_id = $2
-            GROUP BY p.name
-            ORDER BY qty DESC
-        `, [firstDay, ownerId]);
-        
         stats.monthlyProductSales = res5.rows || [];
         if (stats.monthlyProductSales.length > 0) stats.totals.topSeller = stats.monthlyProductSales[0].name;
 
-        const res6 = await pool.query(`
-            SELECT customer as name, SUM(total_profit) as profit
-            FROM sales
-            WHERE owner_id = $1
-            GROUP BY customer
-            ORDER BY profit DESC
-            LIMIT 10
-        `, [ownerId]);
         stats.topCustomers = res6.rows || [];
 
-        const res7 = await pool.query(`
-            SELECT name, COUNT(*) as attendance, AVG(shake_profit) as "profitPerDay", SUM(shake_profit) as "totalProfit"
-            FROM attendance
-            WHERE status = 'Present' AND owner_id = $1
-            GROUP BY name
-            ORDER BY "totalProfit" DESC
-        `, [ownerId]);
-        
         stats.shakeProfitDetails = res7.rows || [];
         stats.totals.totalShakeProfit = (stats.shakeProfitDetails).reduce((acc, curr) => acc + (parseFloat(curr.totalProfit) || 0), 0);
 

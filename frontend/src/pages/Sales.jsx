@@ -12,15 +12,15 @@ export function Sales() {
     // PERFORMANCE: Debounce search to avoid expensive filtering on every keystroke
     const debouncedSearch = useDebounce(search, 300);
 
-    const handleDelete = useCallback(async (id, productCount) => {
+    const handleDelete = useCallback(async (itemId, productCount) => {
         const warning = productCount > 1 
-            ? `Warning: This item is part of a transaction with ${productCount} items. Deleting it will delete the ENTIRE transaction. Proceed?` 
+            ? `Are you sure you want to delete this product from the sale?` 
             : 'Are you sure you want to delete this sale? This action cannot be undone.';
         if (!window.confirm(warning)) return;
         try {
-            const { deleteSale } = useStore.getState();
-            await deleteSale(id);
-            useStore.getState().showToast('Sale deleted successfully', 'success');
+            const { deleteSaleItem } = useStore.getState();
+            await deleteSaleItem(itemId);
+            useStore.getState().showToast('Sale item deleted successfully', 'success');
         } catch (err) {
             let msg = err.message || 'Failed to delete sale';
             if (msg.includes("SQLITE_")) {
@@ -79,7 +79,7 @@ export function Sales() {
                                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                     <button className="btn icon-btn" style={{color:'var(--alert-color)'}} onClick={() => {
                                         const productCount = sales.filter(x => x.id === s.id).length;
-                                        handleDelete(s.id, productCount);
+                                        handleDelete(s.item_id || s.id, productCount);
                                     }}>
                                         <Trash2 size={16}/>
                                     </button>

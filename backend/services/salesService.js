@@ -104,3 +104,41 @@ exports.deleteSaleTransaction = async (id, ownerId) => {
         client.release();
     }
 };
+
+exports.deleteSaleItem = async (itemId, ownerId) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const itemRes = await client.query('SELECT * FROM sale_items WHERE id = $1 AND owner_id = $2', [itemId, ownerId]);
+        if (itemRes.rows.length === 0) {
+            throw new Error("Sale item not found");
+        }
+        const item = itemRes.rows[0];
+
+        // Update stock
+        await client.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, item.variant_id, ownerId]);
+
+        // Delete the item
+        await client.query('DELETE FROM sale_items WHERE id = $1 AND owner_id = $2', [itemId, ownerId]);
+
+        // Check if there are any items left in the sale
+        const remainingRes = await client.query('SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as sum_amount, COALESCE(SUM(profit), 0) as sum_profit FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [item.sale_id, ownerId]);
+        
+        const count = parseInt(remainingRes.rows[0].count);
+        if (count === 0) {
+            // Delete entire sale if no items left
+            await client.query('DELETE FROM sales WHERE id = $1 AND owner_id = $2', [item.sale_id, ownerId]);
+        } else {
+            // Update the sale totals
+            await client.query('UPDATE sales SET total_amount = $1, total_profit = $2 WHERE id = $3 AND owner_id = $4', [remainingRes.rows[0].sum_amount, remainingRes.rows[0].sum_profit, item.sale_id, ownerId]);
+        }
+        
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
