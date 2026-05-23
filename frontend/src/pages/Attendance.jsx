@@ -38,11 +38,13 @@ export function Attendance() {
     const perm = usePermissions();
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [name, setName] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const onSubmit = useCallback(async (status) => {
         if (!name.trim()) return useStore.getState().showToast("Select or enter a customer name", "warn");
         
         try {
+            setLoading(true);
             const payload = { 
                 customerName: name, 
                 date, 
@@ -54,6 +56,8 @@ export function Attendance() {
             setName('');
         } catch (error) {
             useStore.getState().showToast(error.message || "Error logging attendance", "error");
+        } finally {
+            setLoading(false);
         }
     }, [date, name, addAttendance]);
 
@@ -69,7 +73,12 @@ export function Attendance() {
 
     const activeRecords = useMemo(() => {
         if (!Array.isArray(attendance)) return [];
-        return attendance.filter(a => a.date === date);
+        return attendance.filter(a => {
+            if (!a.date) return false;
+            // Handle both full ISO strings from DB and raw YYYY-MM-DD
+            const recordDate = a.date.split('T')[0];
+            return recordDate === date;
+        });
     }, [attendance, date]);
 
     const uniqueCustomers = useMemo(() => {
@@ -123,11 +132,11 @@ export function Attendance() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-                    <button className="btn btn-primary" style={{ flex: 1, minWidth: 140 }} onClick={() => onSubmit('Present')}>
-                        <Check size={18} style={{ marginRight: 8 }}/> Mark Present
+                    <button className="btn btn-primary" style={{ flex: 1, minWidth: 140 }} onClick={() => onSubmit('Present')} disabled={loading}>
+                        <Check size={18} style={{ marginRight: 8 }}/> {loading ? 'Logging...' : 'Mark Present'}
                     </button>
-                    <button className="btn btn-danger" style={{ flex: 1, minWidth: 140 }} onClick={() => onSubmit('Absent')}>
-                        <X size={18} style={{ marginRight: 8 }}/> Mark Absent
+                    <button className="btn btn-danger" style={{ flex: 1, minWidth: 140 }} onClick={() => onSubmit('Absent')} disabled={loading}>
+                        <X size={18} style={{ marginRight: 8 }}/> {loading ? 'Logging...' : 'Mark Absent'}
                     </button>
                 </div>
 
