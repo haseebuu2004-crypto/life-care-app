@@ -112,62 +112,163 @@ exports.googleLogin = async (req, res) => {
 
 exports.selectRole = async (req, res) => {
     try {
-        const { selectedRole, password } = req.body;
+        const { selectedRole } = req.body;
         const user = req.user; 
 
-        if (!user || !user.email) {
-            return res.status(401).json({ success: false, message: "Unauthorized" });
+        if (!user || !user.owner_id) {
+            return res.status(401).json({ success: false, message: "Unauthorized: Missing Workspace Context" });
         }
 
         const allowedRoles = ['admin', 'user'];
-
         if (!allowedRoles.includes(selectedRole)) {
             return res.status(403).json({ success: false, message: "Role not permitted" });
         }
 
-        if (selectedRole === 'admin') {
-            const adminPassword = process.env.ADMIN_PASSWORD;
-            if (!adminPassword) {
-                console.error("CRITICAL: ADMIN_PASSWORD environment variable is missing.");
-                return res.status(500).json({ success: false, message: "Server Configuration Error" });
-            }
-            if (password !== adminPassword) {
-                return res.status(401).json({ success: false, message: "Incorrect Admin Password" });
-            }
-        } else if (selectedRole === 'user') {
-            const userPassword = process.env.USER_PASSWORD;
-            if (!userPassword) {
-                console.error("CRITICAL: USER_PASSWORD environment variable is missing.");
-                return res.status(500).json({ success: false, message: "Server Configuration Error" });
-            }
-            if (password !== userPassword) {
-                return res.status(401).json({ success: false, message: "Incorrect User Password" });
-            }
+        let { rows } = await pool.query('SELECT id, password FROM users WHERE username = $1 AND owner_id = $2', [selectedRole, user.owner_id]);
+        let roleUser = rows[0];
+
+        if (!roleUser) {
+            // Workspace doesn't have this role setup yet, initialize it
+            const insertRes = await pool.query(
+                'INSERT INTO users (username, email, role, owner_id) VALUES ($1, $2, $3, $4) RETURNING id',
+                [selectedRole, null, selectedRole, user.owner_id]
+            );
+            roleUser = { id: insertRes.rows[0].id, password: null };
         }
 
-        const token = jwt.sign({ id: user.id, username: user.username, email: user.email, role: selectedRole, owner_id: user.owner_id }, SECRET, { expiresIn: '15m' });
-        const refreshToken = await generateRefreshToken(user.id);
-        
-        const ua = req.headers['user-agent'] || '';
-        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
-        const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
-        const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/\s]([\d.]+)/)?.[1] || 'Unknown';
-
-        const insertRes = await pool.query(
-            'INSERT INTO login_history (user_id, username, role, device, browser, ip) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-            [user.id, user.username, selectedRole, isMobile, browser, ip]
-        );
-        
-        res.json({ 
-            token, 
-            refreshToken,
-            role: selectedRole, 
-            user: { id: user.id, username: user.username, email: user.email },
-            sessionId: insertRes.rows[0].id 
-        });
+        res.json({ success: true, hasPassword: !!roleUser.password });
 
     } catch (error) {
         console.error("Select Role Error:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+exports.setPassword = async (req, res) => {
+    try {
+        const { selectedRole, password } = req.body;
+        const user = req.user;
+        if (!user || !user.owner_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const { rows } = await pool.query('SELECT id, password FROM users WHERE username = $1 AND owner_id = $2', [selectedRole, user.owner_id]);
+        if (!rows[0]) return res.status(404).json({ success: false, message: "Role not initialized" });
+        if (rows[0].password) return res.status(400).json({ success: false, message: "Password already set" });
+
+        if (!password || password.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+        
+        const hash = await bcrypt.hash(password, 10);
+        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hash, rows[0].id]);
+
+        await exports.finalizeLogin(req, res, user, selectedRole);
+    } catch (error) {
+        console.error("Set Password Error:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+exports.verifyPassword = async (req, res) => {
+    try {
+        const { selectedRole, password } = req.body;
+        const user = req.user;
+        if (!user || !user.owner_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const { rows } = await pool.query('SELECT id, password FROM users WHERE username = $1 AND owner_id = $2', [selectedRole, user.owner_id]);
+        const roleUser = rows[0];
+
+        if (!roleUser || !roleUser.password) return res.status(400).json({ success: false, message: "Password not set" });
+
+        const isValid = await bcrypt.compare(password, roleUser.password);
+        if (!isValid) return res.status(401).json({ success: false, message: "Incorrect Password" });
+
+        await exports.finalizeLogin(req, res, user, selectedRole);
+    } catch (error) {
+        console.error("Verify Password Error:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+exports.finalizeLogin = async (req, res, googleUser, selectedRole) => {
+    // Generate JWT for the verified role
+    const token = jwt.sign({ id: googleUser.id, username: googleUser.username, email: googleUser.email, role: selectedRole, owner_id: googleUser.owner_id }, SECRET, { expiresIn: '15m' });
+    const refreshToken = await generateRefreshToken(googleUser.id);
+    
+    const ua = req.headers['user-agent'] || '';
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'Desktop';
+    const browser = ua.match(/(Chrome|Firefox|Safari|Edge|Opera)[/\s]([\d.]+)/)?.[1] || 'Unknown';
+
+    const insertRes = await pool.query(
+        'INSERT INTO login_history (user_id, username, role, device, browser, ip) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [googleUser.id, googleUser.username, selectedRole, isMobile, browser, ip]
+    );
+    
+    res.json({ 
+        token, 
+        refreshToken,
+        role: selectedRole, 
+        user: { id: googleUser.id, username: googleUser.username, email: googleUser.email },
+        sessionId: insertRes.rows[0].id 
+    });
+};
+
+const nodemailer = require('nodemailer');
+
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { selectedRole } = req.body;
+        const user = req.user;
+        if (!user || !user.owner_id) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const { rows } = await pool.query('SELECT id, email FROM users WHERE username = $1 AND owner_id = $2', [selectedRole, user.owner_id]);
+        if (!rows[0]) return res.status(404).json({ success: false, message: "Role not initialized" });
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const tokenExpiry = new Date(Date.now() + 15 * 60000); // 15 minutes
+
+        await pool.query('UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3', [resetToken, tokenExpiry, rows[0].id]);
+
+        // Ethereal Email for testing (generates a mock inbox URL in console)
+        const testAccount = await nodemailer.createTestAccount();
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.ethereal.email',
+            port: 587,
+            secure: false,
+            auth: { user: testAccount.user, pass: testAccount.pass }
+        });
+
+        const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+
+        const info = await transporter.sendMail({
+            from: '"Life Care System" <noreply@lifecare.com>',
+            to: user.email || 'user@example.com',
+            subject: 'Password Reset Request',
+            text: `You requested a password reset for ${selectedRole}. Click here to reset: ${resetLink}`,
+            html: `<p>You requested a password reset for <b>${selectedRole}</b>.</p><p>Click <a href="${resetLink}">here</a> to reset your password. This link is valid for 15 minutes.</p>`
+        });
+
+        console.log("Mock Email Sent! View it here:", nodemailer.getTestMessageUrl(info));
+        res.json({ success: true, message: "Reset link sent to your workspace email." });
+
+    } catch (error) {
+        console.error("Forgot Password Error:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword || newPassword.length < 8) return res.status(400).json({ success: false, message: "Invalid request" });
+
+        const { rows } = await pool.query('SELECT id FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()', [token]);
+        if (!rows[0]) return res.status(400).json({ success: false, message: "Reset token is invalid or has expired" });
+
+        const hash = await bcrypt.hash(newPassword, 10);
+        await pool.query('UPDATE users SET password = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2', [hash, rows[0].id]);
+
+        res.json({ success: true, message: "Password reset successfully. You can now login." });
+    } catch (error) {
+        console.error("Reset Password Error:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
