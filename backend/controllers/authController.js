@@ -126,13 +126,19 @@ exports.selectRole = async (req, res) => {
 
         if (selectedRole === 'admin') {
             const adminPassword = process.env.ADMIN_PASSWORD;
-            if (!adminPassword) throw new Error("CRITICAL: ADMIN_PASSWORD environment variable is missing.");
+            if (!adminPassword) {
+                console.error("CRITICAL: ADMIN_PASSWORD environment variable is missing.");
+                return res.status(500).json({ success: false, message: "Server Configuration Error" });
+            }
             if (password !== adminPassword) {
                 return res.status(401).json({ success: false, message: "Incorrect Admin Password" });
             }
         } else if (selectedRole === 'user') {
             const userPassword = process.env.USER_PASSWORD;
-            if (!userPassword) throw new Error("CRITICAL: USER_PASSWORD environment variable is missing.");
+            if (!userPassword) {
+                console.error("CRITICAL: USER_PASSWORD environment variable is missing.");
+                return res.status(500).json({ success: false, message: "Server Configuration Error" });
+            }
             if (password !== userPassword) {
                 return res.status(401).json({ success: false, message: "Incorrect User Password" });
             }
