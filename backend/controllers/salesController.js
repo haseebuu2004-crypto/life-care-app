@@ -53,3 +53,15 @@ exports.deleteSale = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.deleteSaleItem = async (req, res) => {
+    try {
+        await salesService.deleteSaleItem(req.params.itemId, getOwnerId(req));
+        res.json({ success: true, message: "Sale item deleted successfully", data: null });
+    } catch (error) {
+        if (error.message === "Sale item not found") {
+            return res.status(404).json({ success: false, message: "Sale item not found" });
+        }
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

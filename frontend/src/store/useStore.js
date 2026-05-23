@@ -95,7 +95,7 @@ const useStore = create((set, get) => ({
     addStock: async (payload) => {
         try {
             const res = await api.post('/stock', payload);
-            await Promise.all([get().fetchStock(), get().fetchProducts()]);
+            await Promise.all([get().fetchStock(), get().fetchProducts(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add stock';
@@ -105,7 +105,7 @@ const useStore = create((set, get) => ({
     increaseStock: async (id, qty_add) => {
         try {
             const res = await api.put(`/stock/${id}/add`, { qty_add });
-            await get().fetchStock();
+            await Promise.all([get().fetchStock(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to update stock';
@@ -119,6 +119,7 @@ const useStore = create((set, get) => ({
             set((state) => ({
                 stock: state.stock.map(s => s.id === id ? { ...s, qty: quantity } : s)
             }));
+            await get().fetchDashboardStats();
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to update stock';
@@ -138,7 +139,7 @@ const useStore = create((set, get) => ({
     deleteProduct: async (id) => {
         try {
             const res = await api.delete(`/products/${id}`);
-            await Promise.all([get().fetchProducts(), get().fetchStock()]);
+            await Promise.all([get().fetchProducts(), get().fetchStock(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete product';
@@ -150,7 +151,7 @@ const useStore = create((set, get) => ({
     addAttendance: async (payload) => {
         try {
             const res = await api.post('/attendance', payload);
-            await get().fetchAttendance();
+            await Promise.all([get().fetchAttendance(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to log attendance';
@@ -160,7 +161,7 @@ const useStore = create((set, get) => ({
     deleteAttendance: async (id) => {
         try {
             const res = await api.delete(`/attendance/${id}`);
-            await get().fetchAttendance();
+            await Promise.all([get().fetchAttendance(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete attendance';
@@ -172,7 +173,7 @@ const useStore = create((set, get) => ({
     addSale: async (payload) => {
         try {
             const res = await api.post('/sales', payload);
-            await Promise.all([get().fetchSales(), get().fetchStock()]);
+            await Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add sale';
@@ -182,10 +183,20 @@ const useStore = create((set, get) => ({
     deleteSale: async (id) => {
         try {
             const res = await api.delete(`/sales/${id}`);
-            await Promise.all([get().fetchSales(), get().fetchStock()]);
+            await Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete sale';
+            throw new Error(msg);
+        }
+    },
+    deleteSaleItem: async (itemId) => {
+        try {
+            const res = await api.delete(`/sales/item/${itemId}`);
+            await Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]);
+            return extract(res);
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Failed to delete sale item';
             throw new Error(msg);
         }
     },
