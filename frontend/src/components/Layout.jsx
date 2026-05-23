@@ -63,7 +63,7 @@ export function Layout({ children }) {
                         <Menu size={20} />
                     </button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{fontWeight: 600}}>Welcome, {user?.username}</div>
+                        <div style={{fontWeight: 600}}>Welcome, {user?.username?.split('_')[0]}</div>
                         <span style={{
                             fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                             padding: '2px 8px', borderRadius: 10, letterSpacing: '0.5px',

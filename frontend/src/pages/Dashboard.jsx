@@ -12,7 +12,7 @@ function AdminMetricCard({ icon: Icon, title, value, color, subtitle }) {
                 <Icon size={15} color={color} />
                 <span>{title}</span>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color }}>{value !== undefined && value !== null && !isNaN(value) ? value : '0'}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color }}>{value !== undefined && value !== null && value !== '' ? value : '0'}</div>
             {subtitle && <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{subtitle}</div>}
         </div>
     );
