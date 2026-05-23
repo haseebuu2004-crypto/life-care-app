@@ -235,9 +235,8 @@ exports.forgotPassword = async (req, res) => {
             secure: false,
             auth: { user: testAccount.user, pass: testAccount.pass }
         });
-
-        const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
-
+        const frontendOrigin = process.env.FRONTEND_URL || req.headers.origin || 'http://localhost:5173';
+        const resetLink = `${frontendOrigin}/reset-password/${resetToken}`;
         const info = await transporter.sendMail({
             from: '"Life Care System" <noreply@lifecare.com>',
             to: user.email || 'user@example.com',
