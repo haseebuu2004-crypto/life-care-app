@@ -99,15 +99,10 @@ exports.resetData = async (req, res) => {
         const ownerId = getOwnerId(req);
         const { password } = req.body;
         
-        const { rows } = await pool.query('SELECT role, password FROM users WHERE id = $1', [req.user.id]);
-        if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: "Admin user not found." });
-        }
-        
-        const rawRole = rows[0].role;
-        const currentRole = String(rawRole || '').toLowerCase().trim();
-        if (currentRole !== 'admin') {
-            return res.status(403).json({ success: false, message: `Permission denied. Your current role is '${rawRole}', but 'admin' is required.` });
+        // Fetch the Workspace's dedicated Admin password
+        const { rows } = await pool.query("SELECT password FROM users WHERE username = 'admin' AND owner_id = $1", [ownerId]);
+        if (rows.length === 0 || !rows[0].password) {
+            return res.status(404).json({ success: false, message: "Workspace Admin account not found." });
         }
         
         const isMatch = await bcrypt.compare(password, rows[0].password);
