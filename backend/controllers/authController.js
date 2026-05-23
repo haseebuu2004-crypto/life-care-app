@@ -227,25 +227,50 @@ exports.forgotPassword = async (req, res) => {
 
         await pool.query('UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3', [resetToken, tokenExpiry, rows[0].id]);
 
-        // Ethereal Email for testing (generates a mock inbox URL in console)
-        const testAccount = await nodemailer.createTestAccount();
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email',
-            port: 587,
-            secure: false,
-            auth: { user: testAccount.user, pass: testAccount.pass }
-        });
+        let transporter;
+        let isMock = false;
+
+        // Check if real SMTP credentials are provided in the environment
+        if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+            transporter = nodemailer.createTransport({
+                host: process.env.SMTP_HOST,
+                port: process.env.SMTP_PORT || 587,
+                secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
+                auth: {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS
+                }
+            });
+        } else {
+            // Ethereal Email fallback for testing (generates a mock inbox URL in console)
+            isMock = true;
+            const testAccount = await nodemailer.createTestAccount();
+            transporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email',
+                port: 587,
+                secure: false,
+                auth: { user: testAccount.user, pass: testAccount.pass }
+            });
+        }
+
         const frontendOrigin = process.env.FRONTEND_URL || req.headers.origin || 'http://localhost:5173';
         const resetLink = `${frontendOrigin}/reset-password/${resetToken}`;
+        const fromEmail = process.env.SMTP_FROM_EMAIL || '"Life Care System" <noreply@lifecare.com>';
+        
         const info = await transporter.sendMail({
-            from: '"Life Care System" <noreply@lifecare.com>',
+            from: fromEmail,
             to: user.email || 'user@example.com',
             subject: 'Password Reset Request',
             text: `You requested a password reset for ${selectedRole}. Click here to reset: ${resetLink}`,
             html: `<p>You requested a password reset for <b>${selectedRole}</b>.</p><p>Click <a href="${resetLink}">here</a> to reset your password. This link is valid for 15 minutes.</p>`
         });
 
-        console.log("Mock Email Sent! View it here:", nodemailer.getTestMessageUrl(info));
+        if (isMock) {
+            console.log("Mock Email Sent! View it here:", nodemailer.getTestMessageUrl(info));
+        } else {
+            console.log("Password reset email successfully sent to:", user.email);
+        }
+        
         res.json({ success: true, message: "Reset link sent to your workspace email." });
 
     } catch (error) {
