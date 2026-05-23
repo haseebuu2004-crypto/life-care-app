@@ -9,11 +9,33 @@ const db = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    process.env.FRONTEND_URL,
+].filter(Boolean);
+
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? process.env.FRONTEND_URL 
-        : ['http://localhost:5173', 'http://127.0.0.1:5173'],
-    credentials: true
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like server-to-server or mobile apps)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        
+        // Allow all Vercel preview and production URLs automatically
+        if (origin.endsWith('.vercel.app')) {
+            return callback(null, true);
+        }
+        
+        console.warn(`Blocked CORS request from origin: ${origin}`);
+        return callback(new Error('CORS policy violation: Origin not allowed'), false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 app.use(compression());
 app.use(express.json());
