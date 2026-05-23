@@ -40,23 +40,47 @@ const useStore = create((set, get) => ({
         });
     },
     
+    fetchProducts: async () => {
+        try {
+            const p = await api.get('/products');
+            set({ products: extract(p) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchStock: async () => {
+        try {
+            const s = await api.get('/stock');
+            set({ stock: extract(s) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchSales: async () => {
+        try {
+            const sl = await api.get('/sales');
+            set({ sales: extract(sl) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchAttendance: async () => {
+        try {
+            const a = await api.get('/attendance');
+            set({ attendance: extract(a) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchDashboardStats: async () => {
+        try {
+            const ds = await api.get('/dashboard/stats');
+            set({ dashboardStats: extract(ds) || null });
+        } catch (error) { console.error(error); }
+    },
+
     fetchData: async () => {
         set({ isLoading: true });
         try {
-            const [p, s, sl, a, ds] = await Promise.all([
-                api.get('/products'),
-                api.get('/stock'),
-                api.get('/sales'),
-                api.get('/attendance'),
-                api.get('/dashboard/stats')
+            await Promise.all([
+                get().fetchProducts(),
+                get().fetchStock(),
+                get().fetchSales(),
+                get().fetchAttendance(),
+                get().fetchDashboardStats()
             ]);
-            set({
-                products: extract(p) || [],
-                stock: extract(s) || [],
-                sales: extract(sl) || [],
-                attendance: extract(a) || [],
-                dashboardStats: extract(ds) || null,
-            });
         } catch (error) {
             console.error('fetchData error:', error);
             get().showToast('Failed to load data. Please refresh.', 'error');
@@ -71,7 +95,7 @@ const useStore = create((set, get) => ({
     addStock: async (payload) => {
         try {
             const res = await api.post('/stock', payload);
-            await get().fetchData();
+            await Promise.all([get().fetchStock(), get().fetchProducts()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add stock';
@@ -81,7 +105,7 @@ const useStore = create((set, get) => ({
     increaseStock: async (id, qty_add) => {
         try {
             const res = await api.put(`/stock/${id}/add`, { qty_add });
-            await get().fetchData();
+            await get().fetchStock();
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to update stock';
@@ -114,7 +138,7 @@ const useStore = create((set, get) => ({
     deleteProduct: async (id) => {
         try {
             const res = await api.delete(`/products/${id}`);
-            await get().fetchData();
+            await Promise.all([get().fetchProducts(), get().fetchStock()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete product';
@@ -126,7 +150,7 @@ const useStore = create((set, get) => ({
     addAttendance: async (payload) => {
         try {
             const res = await api.post('/attendance', payload);
-            await get().fetchData();
+            await get().fetchAttendance();
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to log attendance';
@@ -136,7 +160,7 @@ const useStore = create((set, get) => ({
     deleteAttendance: async (id) => {
         try {
             const res = await api.delete(`/attendance/${id}`);
-            await get().fetchData();
+            await get().fetchAttendance();
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete attendance';
@@ -148,7 +172,7 @@ const useStore = create((set, get) => ({
     addSale: async (payload) => {
         try {
             const res = await api.post('/sales', payload);
-            await get().fetchData();
+            await Promise.all([get().fetchSales(), get().fetchStock()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add sale';
@@ -158,7 +182,7 @@ const useStore = create((set, get) => ({
     deleteSale: async (id) => {
         try {
             const res = await api.delete(`/sales/${id}`);
-            await get().fetchData();
+            await Promise.all([get().fetchSales(), get().fetchStock()]);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete sale';
