@@ -52,7 +52,8 @@ exports.googleLogin = async (req, res) => {
         if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
 
         if (!admin || !admin.apps.length) {
-            console.warn("Firebase Admin SDK is not initialized correctly. Skipping actual verification for demonstration.");
+            console.error("CRITICAL: Firebase Admin SDK is not initialized correctly. Cannot verify tokens.");
+            return res.status(500).json({ success: false, message: "Server is missing Firebase Configuration. Please check Render Environment Variables." });
         }
 
         let decodedToken;
