@@ -94,36 +94,44 @@ exports.getStats = async (req, res) => {
 };
 
 exports.resetData = async (req, res) => {
-    const ownerId = getOwnerId(req);
-    const { password } = req.body;
-    
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminPassword) {
-        throw new Error("CRITICAL: ADMIN_PASSWORD environment variable is missing.");
-    }
-    
-    if (!password || password !== adminPassword) {
-        return res.status(401).json({ success: false, message: "Invalid Admin Password. Factory reset aborted." });
-    }
-
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-        await client.query('DELETE FROM sale_items WHERE owner_id = $1', [ownerId]);
-        await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
-        await client.query('DELETE FROM stock WHERE owner_id = $1', [ownerId]);
-        await client.query('DELETE FROM product_variants WHERE owner_id = $1', [ownerId]);
-        await client.query('DELETE FROM products WHERE owner_id = $1', [ownerId]);
-        await client.query('DELETE FROM attendance WHERE owner_id = $1', [ownerId]);
-        await client.query('COMMIT');
+        const ownerId = getOwnerId(req);
+        const { password } = req.body;
         
-        res.json({ success: true, message: "All data has been permanently deleted." });
+        const adminPassword = process.env.ADMIN_PASSWORD;
+        if (!adminPassword) {
+            return res.status(500).json({ success: false, message: "Configuration Error: ADMIN_PASSWORD is not set in the server environment." });
+        }
+        
+        if (!password || password !== adminPassword) {
+            return res.status(401).json({ success: false, message: "Invalid Admin Password. Factory reset aborted." });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Delete top-level entities. Cascading will automatically handle stock, sale_items, product_variants.
+            // We delete all entities associated with this owner.
+            await client.query('DELETE FROM sale_items WHERE owner_id = $1', [ownerId]);
+            await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
+            await client.query('DELETE FROM stock WHERE owner_id = $1', [ownerId]);
+            await client.query('DELETE FROM product_variants WHERE owner_id = $1', [ownerId]);
+            await client.query('DELETE FROM products WHERE owner_id = $1', [ownerId]);
+            await client.query('DELETE FROM attendance WHERE owner_id = $1', [ownerId]);
+            
+            await client.query('COMMIT');
+            res.json({ success: true, message: "All data has been permanently deleted." });
+        } catch (dbError) {
+            await client.query('ROLLBACK');
+            console.error("Reset Data DB Error:", dbError);
+            res.status(500).json({ success: false, message: "Database Error: " + dbError.message });
+        } finally {
+            client.release();
+        }
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error("Reset Data Error:", error);
-        res.status(500).json({ success: false, message: "Failed to reset data." });
-    } finally {
-        client.release();
+        console.error("Reset Data Server Error:", error);
+        res.status(500).json({ success: false, message: "Server Error: " + error.message });
     }
 };
 
