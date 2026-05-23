@@ -19,7 +19,10 @@ export function Layout({ children }) {
     const [fabOpen, setFabOpen] = useState(false);
 
     useEffect(() => {
-        // Layout manages background auto-sync (ProtectedRoute handles initial fetch)
+        // Initial fetch when layout mounts (on login or refresh)
+        fetchData();
+        
+        // Background auto-sync
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, [fetchData]);
