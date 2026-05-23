@@ -58,12 +58,18 @@ exports.addStock = async (req, res) => {
         const { rows: variants } = await pool.query('SELECT id FROM product_variants WHERE product_id = $1 AND LOWER(TRIM(flavor)) = $2 AND owner_id = $3', [productId, finalFlavorLower, ownerId]);
         
         if (variants.length > 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: hasFlavours 
-                    ? `Product "${normName}" with flavour "${finalFlavor}" already exists.` 
-                    : `Product "${normName}" already exists.` 
-            });
+            const pvId = variants[0].id;
+            try {
+                // Product already exists, so we just increment the stock quantity
+                await pool.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [quantity, pvId, ownerId]);
+                // Optionally update the prices/VP to the newest entered values
+                await pool.query('UPDATE product_variants SET vp = $1, sp = $2 WHERE id = $3 AND owner_id = $4', [volumePoint, price, pvId, ownerId]);
+                
+                return res.status(200).json({ success: true, data: { id: pvId, message: "Stock quantity updated for existing product" } });
+            } catch (updateErr) {
+                console.error('SQL Error (UPDATE stock):', updateErr);
+                return res.status(500).json({ success: false, message: 'Database error updating stock: ' + updateErr.message });
+            }
         } else {
             try {
                 const insertVariantRes = await pool.query(
