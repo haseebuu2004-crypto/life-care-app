@@ -139,6 +139,15 @@ async function createTables() {
             ip VARCHAR(255)
         )`);
 
+        // Refresh Tokens Table
+        await client.query(`CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id SERIAL PRIMARY KEY,
+            token VARCHAR(255) UNIQUE NOT NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         // Performance Indexes
         await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer)`);
