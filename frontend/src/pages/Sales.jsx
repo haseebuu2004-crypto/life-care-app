@@ -68,7 +68,7 @@ export function Sales() {
                     <tbody>
                         {filteredSales.map(s => (
                             <tr key={s.item_id || s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '12px 16px' }}>{s.date}</td>
+                                <td style={{ padding: '12px 16px' }}>{s.date ? new Date(s.date).toLocaleDateString() : 'N/A'}</td>
                                 <td style={{ padding: '12px 16px' }}><strong>{s.customer}</strong></td>
                                 <td style={{ padding: '12px 16px' }}>{s.product_name} {s.flavor ? `(${s.flavor})` : ''}</td>
                                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>{s.qty}</td>

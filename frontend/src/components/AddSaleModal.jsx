@@ -8,6 +8,7 @@ export function AddSaleModal({ onClose }) {
     const [customer, setCustomer] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [items, setItems] = useState([{ stock_id: '', qty: 1, sellingPrice: '' }]);
+    const [loading, setLoading] = useState(false);
 
     // Extract unique customers for datalist
     const uniqueCustomers = useMemo(() => {
@@ -80,6 +81,7 @@ export function AddSaleModal({ onClose }) {
         if (validItems.length === 0) return useStore.getState().showToast("At least 1 valid product required", "warn");
 
         try {
+            setLoading(true);
             const productsPayload = validItems.map(i => {
                 const stockId = parseInt(i.stock_id);
                 const s = stock.find(st => st.id === stockId);
@@ -107,6 +109,8 @@ export function AddSaleModal({ onClose }) {
                 msg = "Failed to save sale. Please try again.";
             }
             useStore.getState().showToast(msg, "error");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -238,9 +242,11 @@ export function AddSaleModal({ onClose }) {
                         </div>
                     </div>
 
-                    <div className="flex justify-between" style={{ marginTop: 20 }}>
-                        <button type="button" onClick={onClose} className="btn btn-outline">Cancel</button>
-                        <button type="submit" className="btn btn-primary">Save Sale</button>
+                    <div className="modal-footer" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 15, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                        <button type="button" className="btn btn-outline" onClick={onClose} disabled={loading}>Cancel</button>
+                        <button type="submit" className="btn btn-primary" disabled={loading}>
+                            {loading ? 'Completing Sale...' : 'Complete Sale'}
+                        </button>
                     </div>
                 </form>
             </div>

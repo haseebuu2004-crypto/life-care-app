@@ -14,6 +14,7 @@ export function AddStockModal({ onClose }) {
     });
     
     const [hasFlavour, setHasFlavour] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     const onSubmit = async (e) => {
         e.preventDefault();
@@ -41,6 +42,7 @@ export function AddStockModal({ onClose }) {
         }
 
         try {
+            setLoading(true);
             await addStock({
                 productName: form.product_name,
                 hasFlavours: hasFlavour,
@@ -54,6 +56,8 @@ export function AddStockModal({ onClose }) {
         } catch (err) {
             const errorMsg = err.message || "Failed to add stock.";
             useStore.getState().showToast(errorMsg, "error");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -129,8 +133,10 @@ export function AddStockModal({ onClose }) {
                     </div>
 
                     <div className="flex justify-between" style={{ marginTop: 20 }}>
-                        <button type="button" onClick={onClose} className="btn btn-outline">Cancel</button>
-                        <button type="submit" className="btn btn-primary">Save Stock</button>
+                        <button type="button" onClick={onClose} className="btn btn-outline" disabled={loading}>Cancel</button>
+                        <button type="submit" className="btn btn-primary" disabled={loading}>
+                            {loading ? 'Saving...' : 'Save Stock'}
+                        </button>
                     </div>
                 </form>
             </div>
