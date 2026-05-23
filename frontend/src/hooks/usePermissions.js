@@ -24,7 +24,8 @@ export function usePermissions() {
 
         // Navigation & features
         canViewStock:     true, // both
-        canAddStock:      true, // Both can add stock? I'll allow it so they can "Add Sales" and "Delete product" etc. The prompt says "Delete product option" for stock page.
+        canAddStock:      isAdmin, // Only admin can add stock directly
+        canEditStockQty:  isAdmin, // Only admin can edit stock qty directly
         
         canViewSales:     true,
         canAddSale:       true,

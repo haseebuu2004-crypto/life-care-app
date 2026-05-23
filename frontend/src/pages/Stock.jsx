@@ -4,7 +4,9 @@ import { Plus, Minus, Trash2, Package, AlertTriangle } from 'lucide-react';
 import { AddStockModal } from '../components/AddStockModal';
 import { useDebounce } from '../hooks/useDebounce';
 
-const StockRow = memo(({ item, isAdmin, updateStockQuantity, deleteStock }) => {
+import { usePermissions } from '../hooks/usePermissions';
+
+const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, deleteStock }) => {
     const [tempQty, setTempQty] = useState(item.qty.toString());
     const isLowStock = item.qty <= 5;
 
@@ -64,42 +66,52 @@ const StockRow = memo(({ item, isAdmin, updateStockQuantity, deleteStock }) => {
             </td>
             <td style={{ padding: '12px 16px' }}>{item.flavor || 'Standard'}</td>
             <td style={{ padding: '12px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <button 
-                        className="btn icon-btn" 
-                        onClick={decrement} 
-                        disabled={parseInt(tempQty) <= 0}
-                        style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}
-                    >
-                        <Minus size={14} />
-                    </button>
-                    
-                    <input 
-                        type="number" 
-                        value={tempQty} 
-                        onChange={handleQtyChange}
-                        onBlur={handleBlur}
-                        onKeyDown={handleKeyDown}
-                        style={{ 
-                            width: 60, 
-                            padding: '6px', 
-                            textAlign: 'center',
-                            fontWeight: isLowStock ? 'bold' : 'normal', 
-                            color: isLowStock ? 'var(--alert-color)' : 'inherit',
-                            margin: 0,
-                            borderRadius: '4px',
-                            border: '1px solid var(--border-color)'
-                        }}
-                    />
-                    
-                    <button 
-                        className="btn icon-btn" 
-                        onClick={increment}
-                        style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}
-                    >
-                        <Plus size={14} />
-                    </button>
-                </div>
+                {canEditStockQty ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <button 
+                            className="btn icon-btn" 
+                            onClick={decrement} 
+                            disabled={parseInt(tempQty) <= 0}
+                            style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}
+                        >
+                            <Minus size={14} />
+                        </button>
+                        
+                        <input 
+                            type="number" 
+                            value={tempQty} 
+                            onChange={handleQtyChange}
+                            onBlur={handleBlur}
+                            onKeyDown={handleKeyDown}
+                            style={{ 
+                                width: 60, 
+                                padding: '6px', 
+                                textAlign: 'center',
+                                fontWeight: isLowStock ? 'bold' : 'normal', 
+                                color: isLowStock ? 'var(--alert-color)' : 'inherit',
+                                margin: 0,
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-color)'
+                            }}
+                        />
+                        
+                        <button 
+                            className="btn icon-btn" 
+                            onClick={increment}
+                            style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}
+                        >
+                            <Plus size={14} />
+                        </button>
+                    </div>
+                ) : (
+                    <span style={{ 
+                        fontWeight: isLowStock ? 'bold' : 'normal', 
+                        color: isLowStock ? 'var(--alert-color)' : 'inherit',
+                        fontSize: '15px'
+                    }}>
+                        {item.qty}
+                    </span>
+                )}
             </td>
             <td style={{ padding: '12px 16px' }}>₹{item.sp}</td>
             <td style={{ padding: '12px 16px' }}>{item.vp}</td>
@@ -125,7 +137,10 @@ export function Stock() {
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     
-    const canDelete = true;
+    const perm = usePermissions();
+    const canDelete = perm.isAdmin;
+    const canEditStockQty = perm.canEditStockQty;
+    const canAddStock = perm.canAddStock;
 
     const debouncedSearch = useDebounce(search, 300);
 
@@ -151,9 +166,11 @@ export function Stock() {
                         value={search} onChange={e => setSearch(e.target.value)} 
                         style={{ maxWidth: 300, flex: 1 }} 
                     />
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-                        <Plus size={16} /> Add Stock
-                    </button>
+                    {canAddStock && (
+                        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                            <Plus size={16} /> Add Stock
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -175,6 +192,7 @@ export function Stock() {
                                 key={item.id} 
                                 item={item} 
                                 isAdmin={canDelete} 
+                                canEditStockQty={canEditStockQty}
                                 updateStockQuantity={updateStockQuantity} 
                                 deleteStock={deleteStock} 
                             />
