@@ -10,7 +10,7 @@ class BackupService {
         switch (type.toLowerCase()) {
             case 'customers':
                 // For now, customers are derived from sales/attendance or users if there is a table
-                query = `SELECT DISTINCT name as customer_name, MAX(date) as last_active 
+                query = `SELECT DISTINCT name as customer_name, TO_CHAR(MAX(date), 'YYYY-MM-DD') as last_active 
                          FROM (
                              SELECT customer as name, date FROM sales WHERE owner_id = $1
                              UNION ALL
@@ -20,7 +20,7 @@ class BackupService {
                 break;
             case 'sales':
                 query = `
-                    SELECT s.id, s.date, s.customer, s.total_profit, si.variant_id, si.qty, p.name as product_name, pv.flavor 
+                    SELECT TO_CHAR(s.date, 'YYYY-MM-DD') as date, s.customer, s.total_profit, p.name as product_name, pv.flavor, si.qty 
                     FROM sales s
                     LEFT JOIN sale_items si ON s.id = si.sale_id
                     LEFT JOIN product_variants pv ON si.variant_id = pv.id
@@ -30,11 +30,11 @@ class BackupService {
                 `;
                 break;
             case 'attendance':
-                query = `SELECT id, date, name, status, others_deduction, shake_profit FROM attendance WHERE owner_id = $1 ORDER BY date DESC`;
+                query = `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date, name, status, others_deduction, shake_profit FROM attendance WHERE owner_id = $1 ORDER BY date DESC`;
                 break;
             case 'products':
                 query = `
-                    SELECT p.id as product_id, p.name, pv.id as variant_id, pv.flavor, pv.vp, pv.sp, s.qty
+                    SELECT p.name as product_name, pv.flavor, pv.vp, pv.sp, s.qty as stock_quantity
                     FROM products p
                     JOIN product_variants pv ON p.id = pv.product_id
                     LEFT JOIN stock s ON pv.id = s.variant_id
