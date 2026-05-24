@@ -144,7 +144,7 @@ class RestoreService {
             if (row.product_name) {
                 groupedSales[key].items.push({
                     product_name: row.product_name,
-                    flavor: row.flavor,
+                    flavor: row.flavor || 'Base',
                     qty: row.qty || 1
                 });
             }
@@ -152,29 +152,50 @@ class RestoreService {
 
         for (const key in groupedSales) {
             const sale = groupedSales[key];
+            let saleId = null;
+            let existingItems = [];
             
             if (strategy === 'merge') {
-                // Check if sale already exists on this date for this customer
+                // Check if sale already exists on this date for this customer with same profit
                 const { rows: existing } = await client.query(
                     'SELECT id FROM sales WHERE DATE(date) = DATE($1) AND customer = $2 AND total_profit = $3 AND owner_id = $4 LIMIT 1',
                     [sale.date, sale.customer, sale.total_profit, ownerId]
                 );
                 
-                // If it already exists, we skip it to prevent duplicating items or messing up stock
-                // (Merge strategy only inserts missing sales)
-                if (existing.length > 0) continue;
+                if (existing.length > 0) {
+                    saleId = existing[0].id;
+                    // Fetch items already in this sale to prevent duplicating them
+                    const { rows: dbItems } = await client.query(`
+                        SELECT p.name as product_name, pv.flavor 
+                        FROM sale_items si 
+                        JOIN product_variants pv ON si.variant_id = pv.id 
+                        JOIN products p ON pv.product_id = p.id 
+                        WHERE si.sale_id = $1
+                    `, [saleId]);
+                    existingItems = dbItems;
+                }
             }
 
-            // Insert missing sale
-            const insertSaleRes = await client.query(
-                'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, $3, $4) RETURNING id',
-                [sale.date, sale.customer, sale.total_profit, ownerId]
-            );
-            const saleId = insertSaleRes.rows[0].id;
+            // If sale doesn't exist, create a new one
+            if (!saleId) {
+                const insertSaleRes = await client.query(
+                    'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, $3, $4) RETURNING id',
+                    [sale.date, sale.customer, sale.total_profit, ownerId]
+                );
+                saleId = insertSaleRes.rows[0].id;
+            }
 
-            let saleTotalAmount = 0;
+            let saleTotalAmountAdded = 0;
 
             for (const item of sale.items) {
+                // Check if item already exists in this sale (item-level merge)
+                const itemExists = existingItems.some(dbItem => 
+                    dbItem.product_name === item.product_name && 
+                    dbItem.flavor === item.flavor
+                );
+
+                if (itemExists) continue; // Skip exact matches to prevent duplicate stock deductions
+
                 let variantId = null;
                 let salePrice = 0;
                 
@@ -183,7 +204,7 @@ class RestoreService {
                     FROM product_variants pv
                     JOIN products p ON pv.product_id = p.id
                     WHERE p.name = $1 AND pv.flavor = $2 AND p.owner_id = $3
-                `, [item.product_name, item.flavor || 'Base', ownerId]);
+                `, [item.product_name, item.flavor, ownerId]);
                 
                 if (variants.length > 0) {
                     variantId = variants[0].id;
@@ -191,11 +212,11 @@ class RestoreService {
                 }
 
                 if (variantId) {
-                    // Deduct stock to respect business logic
+                    // Deduct stock to safely respect business logic
                     await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, variantId, ownerId]);
                     
                     const itemTotal = salePrice * item.qty;
-                    saleTotalAmount += itemTotal;
+                    saleTotalAmountAdded += itemTotal;
                     
                     await client.query(
                         'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, 0, $6)',
@@ -205,7 +226,9 @@ class RestoreService {
             }
 
             // Update total amount on the parent sale
-            await client.query('UPDATE sales SET total_amount = $1 WHERE id = $2', [saleTotalAmount, saleId]);
+            if (saleTotalAmountAdded > 0) {
+                await client.query('UPDATE sales SET total_amount = total_amount + $1 WHERE id = $2', [saleTotalAmountAdded, saleId]);
+            }
         }
     }
 }
