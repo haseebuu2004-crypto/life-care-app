@@ -4,7 +4,10 @@ const runMigrations = require('../migrations/index');
 
 const pool = new Pool({
     connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Supabase usually
+    ssl: { rejectUnauthorized: false }, // Required for Supabase usually
+    max: 20, // Increased pool size to prevent starvation
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
 });
 
 pool.on('error', (err) => {
@@ -166,6 +169,15 @@ async function createTables() {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_attendance_name ON attendance(name)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)`);
+
+        // Multi-tenant optimization indexes
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_products_owner ON products(owner_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_product_variants_owner ON product_variants(owner_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_owner ON stock(owner_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_owner ON sales(owner_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_owner_date ON sales(owner_id, date)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_sale_items_owner ON sale_items(owner_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_attendance_owner ON attendance(owner_id)`);
 
         await client.query('COMMIT');
     } catch (e) {
