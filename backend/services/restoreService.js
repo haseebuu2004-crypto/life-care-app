@@ -127,107 +127,70 @@ class RestoreService {
             await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
         }
 
-        // Group rows by date, customer, and total_profit (since a single sale transaction has multiple items)
-        const groupedSales = {};
         for (const row of records) {
-            if (!row.date || !row.customer) continue;
-            
-            const key = `${row.date}_${row.customer}_${row.total_profit || 0}`;
-            if (!groupedSales[key]) {
-                groupedSales[key] = {
-                    date: row.date,
-                    customer: row.customer,
-                    total_profit: row.total_profit || 0,
-                    items: []
-                };
-            }
-            if (row.product_name) {
-                groupedSales[key].items.push({
-                    product_name: row.product_name,
-                    flavor: row.flavor || 'Base',
-                    qty: row.qty || 1
-                });
-            }
-        }
+            if (!row.date || !row.customer || !row.product_name) continue;
 
-        for (const key in groupedSales) {
-            const sale = groupedSales[key];
-            let saleId = null;
-            let existingItems = [];
-            
+            const flavor = row.flavor || 'Base';
+            const rowProfit = parseFloat(row.total_profit) || 0;
+            const itemQty = parseFloat(row.qty) || 1;
+
             if (strategy === 'merge') {
-                // Check if sale already exists on this date for this customer with same profit
-                const { rows: existing } = await client.query(
-                    'SELECT id FROM sales WHERE DATE(date) = DATE($1) AND customer = $2 AND total_profit = $3 AND owner_id = $4 LIMIT 1',
-                    [sale.date, sale.customer, sale.total_profit, ownerId]
-                );
-                
-                if (existing.length > 0) {
-                    saleId = existing[0].id;
-                    // Fetch items already in this sale to prevent duplicating them
-                    const { rows: dbItems } = await client.query(`
-                        SELECT p.name as product_name, pv.flavor 
-                        FROM sale_items si 
-                        JOIN product_variants pv ON si.variant_id = pv.id 
-                        JOIN products p ON pv.product_id = p.id 
-                        WHERE si.sale_id = $1
-                    `, [saleId]);
-                    existingItems = dbItems;
-                }
-            }
-
-            // If sale doesn't exist, create a new one
-            if (!saleId) {
-                const insertSaleRes = await client.query(
-                    'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, $3, $4) RETURNING id',
-                    [sale.date, sale.customer, sale.total_profit, ownerId]
-                );
-                saleId = insertSaleRes.rows[0].id;
-            }
-
-            let saleTotalAmountAdded = 0;
-
-            for (const item of sale.items) {
-                // Check if item already exists in this sale (item-level merge)
-                const itemExists = existingItems.some(dbItem => 
-                    dbItem.product_name === item.product_name && 
-                    dbItem.flavor === item.flavor
-                );
-
-                if (itemExists) continue; // Skip exact matches to prevent duplicate stock deductions
-
-                let variantId = null;
-                let salePrice = 0;
-                
-                const { rows: variants } = await client.query(`
-                    SELECT pv.id, pv.sp
-                    FROM product_variants pv
+                // Look for THIS EXACT ITEM in the database
+                const { rows: existing } = await client.query(`
+                    SELECT s.id 
+                    FROM sales s
+                    JOIN sale_items si ON s.id = si.sale_id
+                    JOIN product_variants pv ON si.variant_id = pv.id
                     JOIN products p ON pv.product_id = p.id
-                    WHERE p.name = $1 AND pv.flavor = $2 AND p.owner_id = $3
-                `, [item.product_name, item.flavor, ownerId]);
+                    WHERE DATE(s.date) = DATE($1) 
+                      AND s.customer = $2 
+                      AND s.total_profit = $3 
+                      AND p.name = $4 
+                      AND pv.flavor = $5 
+                      AND s.owner_id = $6 
+                    LIMIT 1
+                `, [row.date, row.customer, rowProfit, row.product_name, flavor, ownerId]);
                 
-                if (variants.length > 0) {
-                    variantId = variants[0].id;
-                    salePrice = variants[0].sp || 0;
-                }
-
-                if (variantId) {
-                    // Deduct stock to safely respect business logic
-                    await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, variantId, ownerId]);
-                    
-                    const itemTotal = salePrice * item.qty;
-                    saleTotalAmountAdded += itemTotal;
-                    
-                    await client.query(
-                        'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, 0, $6)',
-                        [saleId, variantId, item.qty, salePrice, itemTotal, ownerId]
-                    );
-                }
+                if (existing.length > 0) continue; // Item exists, skip!
             }
 
-            // Update total amount on the parent sale
-            if (saleTotalAmountAdded > 0) {
-                await client.query('UPDATE sales SET total_amount = total_amount + $1 WHERE id = $2', [saleTotalAmountAdded, saleId]);
+            // Item is missing! We must restore it to preserve its individual rate
+            let variantId = null;
+            let costPrice = 0;
+            
+            const { rows: variants } = await client.query(`
+                SELECT pv.id, pv.sp
+                FROM product_variants pv
+                JOIN products p ON pv.product_id = p.id
+                WHERE p.name = $1 AND pv.flavor = $2 AND p.owner_id = $3
+            `, [row.product_name, flavor, ownerId]);
+            
+            if (variants.length > 0) {
+                variantId = variants[0].id;
+                costPrice = parseFloat(variants[0].sp) || 0;
+            }
+
+            if (variantId) {
+                // Recalculate proper rates based on the exported profit and live cost
+                const itemProfit = rowProfit;
+                const itemTotalAmount = (costPrice * itemQty) + itemProfit;
+                const salePrice = itemTotalAmount / itemQty;
+
+                // Deduct stock safely
+                await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [itemQty, variantId, ownerId]);
+
+                // Create a fresh sale for this item to preserve exact financial math
+                const insertSaleRes = await client.query(
+                    'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                    [row.date, row.customer, itemTotalAmount, itemProfit, ownerId]
+                );
+                const saleId = insertSaleRes.rows[0].id;
+                
+                // Insert the item with fully reconstructed rates
+                await client.query(
+                    'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                    [saleId, variantId, itemQty, salePrice, itemTotalAmount, itemProfit, ownerId]
+                );
             }
         }
     }
