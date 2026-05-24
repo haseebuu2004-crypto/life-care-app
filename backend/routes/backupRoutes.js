@@ -15,11 +15,14 @@ const checkAdmin = (req, res, next) => {
     }
 };
 
-router.use(authenticateToken, checkAdmin);
+router.use(authenticateToken);
 
-router.post('/generate', backupController.generateBackup);
+// Allow any authenticated user to view logs (or fallback to basic owner isolation)
 router.get('/logs', backupController.getBackupLogs);
-router.post('/restore/validate', upload.single('backupFile'), backupController.validateRestore);
-router.post('/restore/confirm', upload.single('backupFile'), backupController.confirmRestore);
+
+// Require admin for mutations
+router.post('/generate', checkAdmin, backupController.generateBackup);
+router.post('/restore/validate', checkAdmin, upload.single('backupFile'), backupController.validateRestore);
+router.post('/restore/confirm', checkAdmin, upload.single('backupFile'), backupController.confirmRestore);
 
 module.exports = router;
