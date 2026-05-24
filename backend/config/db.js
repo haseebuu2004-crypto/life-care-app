@@ -4,10 +4,7 @@ const runMigrations = require('../migrations/index');
 
 const pool = new Pool({
     connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // Required for Supabase usually
-    max: 20, // Increased pool size to prevent starvation
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
+    ssl: { rejectUnauthorized: false } // Required for Supabase usually
 });
 
 pool.on('error', (err) => {
