@@ -62,13 +62,12 @@ class RestoreService {
             if (type === 'attendance') {
                 await this.restoreAttendance(client, ownerId, data, strategy);
             } else if (type === 'sales') {
-                // Complex hierarchical restore would go here
-                throw new Error('Sales restore not fully implemented in this preview version due to relational complexity. Requires Product linking.');
+                await this.restoreSales(client, ownerId, data, strategy);
             } else if (type === 'products') {
                 throw new Error('Products restore not fully implemented in this preview version.');
             } else if (type === 'full') {
                 if (data.attendance) await this.restoreAttendance(client, ownerId, data.attendance, strategy);
-                // Sales and products would be restored here
+                if (data.sales) await this.restoreSales(client, ownerId, data.sales, strategy);
             } else {
                 throw new Error('Unsupported restore type.');
             }
@@ -120,6 +119,93 @@ class RestoreService {
                     [row.date, row.name, status, deduction, profit, ownerId]
                 );
             }
+        }
+    }
+
+    async restoreSales(client, ownerId, records, strategy) {
+        if (strategy === 'wipe') {
+            await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
+        }
+
+        // Group rows by date, customer, and total_profit (since a single sale transaction has multiple items)
+        const groupedSales = {};
+        for (const row of records) {
+            if (!row.date || !row.customer) continue;
+            
+            const key = `${row.date}_${row.customer}_${row.total_profit || 0}`;
+            if (!groupedSales[key]) {
+                groupedSales[key] = {
+                    date: row.date,
+                    customer: row.customer,
+                    total_profit: row.total_profit || 0,
+                    items: []
+                };
+            }
+            if (row.product_name) {
+                groupedSales[key].items.push({
+                    product_name: row.product_name,
+                    flavor: row.flavor,
+                    qty: row.qty || 1
+                });
+            }
+        }
+
+        for (const key in groupedSales) {
+            const sale = groupedSales[key];
+            
+            if (strategy === 'merge') {
+                // Check if sale already exists on this date for this customer
+                const { rows: existing } = await client.query(
+                    'SELECT id FROM sales WHERE DATE(date) = DATE($1) AND customer = $2 AND owner_id = $3 LIMIT 1',
+                    [sale.date, sale.customer, ownerId]
+                );
+                
+                // If it already exists, we skip it to prevent duplicating items or messing up stock
+                // (Merge strategy only inserts missing sales)
+                if (existing.length > 0) continue;
+            }
+
+            // Insert missing sale
+            const insertSaleRes = await client.query(
+                'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, $3, $4) RETURNING id',
+                [sale.date, sale.customer, sale.total_profit, ownerId]
+            );
+            const saleId = insertSaleRes.rows[0].id;
+
+            let saleTotalAmount = 0;
+
+            for (const item of sale.items) {
+                let variantId = null;
+                let salePrice = 0;
+                
+                const { rows: variants } = await client.query(`
+                    SELECT pv.id, pv.sp
+                    FROM product_variants pv
+                    JOIN products p ON pv.product_id = p.id
+                    WHERE p.name = $1 AND pv.flavor = $2 AND p.owner_id = $3
+                `, [item.product_name, item.flavor || 'Base', ownerId]);
+                
+                if (variants.length > 0) {
+                    variantId = variants[0].id;
+                    salePrice = variants[0].sp || 0;
+                }
+
+                if (variantId) {
+                    // Deduct stock to respect business logic
+                    await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, variantId, ownerId]);
+                    
+                    const itemTotal = salePrice * item.qty;
+                    saleTotalAmount += itemTotal;
+                    
+                    await client.query(
+                        'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, 0, $6)',
+                        [saleId, variantId, item.qty, salePrice, itemTotal, ownerId]
+                    );
+                }
+            }
+
+            // Update total amount on the parent sale
+            await client.query('UPDATE sales SET total_amount = $1 WHERE id = $2', [saleTotalAmount, saleId]);
         }
     }
 }
