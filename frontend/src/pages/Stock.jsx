@@ -6,17 +6,23 @@ import { useDebounce } from '../hooks/useDebounce';
 
 import { usePermissions } from '../hooks/usePermissions';
 
-const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, deleteStock }) => {
+const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, updateStockPrice, deleteStock }) => {
     const [tempQty, setTempQty] = useState(item.qty.toString());
+    const [tempPrice, setTempPrice] = useState(item.sp.toString());
     const isLowStock = item.qty <= 5;
 
     // Keep tempQty in sync with actual qty when it changes from outside
     useEffect(() => {
         setTempQty(item.qty.toString());
-    }, [item.qty]);
+        setTempPrice(item.sp.toString());
+    }, [item.qty, item.sp]);
 
     const handleQtyChange = (e) => {
         setTempQty(e.target.value);
+    };
+
+    const handlePriceChange = (e) => {
+        setTempPrice(e.target.value);
     };
 
     const commitQty = (newQtyStr) => {
@@ -32,8 +38,25 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
         }
     };
 
+    const commitPrice = (newPriceStr) => {
+        let val = Number(newPriceStr);
+        if (isNaN(val) || val < 0) val = item.sp;
+        setTempPrice(val.toString());
+        
+        if (val !== item.sp) {
+            updateStockPrice(item.id, val).catch(err => {
+                useStore.getState().showToast(err.message, 'error');
+                setTempPrice(item.sp.toString());
+            });
+        }
+    };
+
     const handleBlur = () => {
         commitQty(tempQty);
+    };
+
+    const handlePriceBlur = () => {
+        commitPrice(tempPrice);
     };
 
     const handleKeyDown = (e) => {
@@ -113,7 +136,29 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
                     </span>
                 )}
             </td>
-            <td style={{ padding: '12px 16px' }}>₹{item.sp}</td>
+            <td style={{ padding: '12px 16px' }}>
+                {isAdmin ? (
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ marginRight: 4 }}>₹</span>
+                        <input 
+                            type="number" 
+                            value={tempPrice} 
+                            onChange={handlePriceChange}
+                            onBlur={handlePriceBlur}
+                            onKeyDown={handleKeyDown}
+                            style={{ 
+                                width: 80, 
+                                padding: '6px', 
+                                margin: 0,
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-color)'
+                            }}
+                        />
+                    </div>
+                ) : (
+                    `₹${item.sp}`
+                )}
+            </td>
             <td style={{ padding: '12px 16px' }}>{item.vp}</td>
             {isAdmin && (
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
@@ -133,7 +178,7 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
 StockRow.displayName = 'StockRow';
 
 export function Stock() {
-    const { stock, updateStockQuantity, deleteStock } = useStore();
+    const { stock, updateStockQuantity, updateStockPrice, deleteStock } = useStore();
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     
@@ -193,7 +238,8 @@ export function Stock() {
                                 item={item} 
                                 isAdmin={canDelete} 
                                 canEditStockQty={canEditStockQty}
-                                updateStockQuantity={updateStockQuantity} 
+                                updateStockQuantity={updateStockQuantity}
+                                updateStockPrice={updateStockPrice}
                                 deleteStock={deleteStock} 
                             />
                         ))}

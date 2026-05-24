@@ -50,6 +50,7 @@ router.get('/stock', authenticateToken, stockController.getStock);
 router.post('/stock', authenticateToken, stockController.addStock);
 router.put('/stock/:id/add', authenticateToken, stockController.increaseStock);
 router.patch('/stock/:id', authenticateToken, stockController.updateStockQuantity);
+router.patch('/stock/:id/price', authenticateToken, stockController.updateStockPrice);
 router.delete('/stock/:id', authenticateToken, stockController.deleteStock);
 
 // Sales
