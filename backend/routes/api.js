@@ -10,6 +10,10 @@ const stockController = require('../controllers/stockController');
 const salesController = require('../controllers/salesController');
 const attendanceController = require('../controllers/attendanceController');
 const dashboardController = require('../controllers/dashboardController');
+const backupRoutes = require('./backupRoutes');
+
+// Backup System
+router.use('/backup', backupRoutes);
 
 // Dashboard Stats
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);

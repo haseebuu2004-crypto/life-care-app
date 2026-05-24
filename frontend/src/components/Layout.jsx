@@ -51,6 +51,7 @@ export function Layout({ children }) {
                     <NavLink to="/attendance" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Calendar size={20}/> Attendance</NavLink>
                     {perm.isAdmin && <NavLink to="/data-management" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Database size={20}/> Data Mgt.</NavLink>}
                     {perm.isAdmin && <NavLink to="/reports" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><BarChart2 size={20}/> Reports</NavLink>}
+                    {perm.isAdmin && <NavLink to="/admin/backups" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Database size={20}/> Backup & Restore</NavLink>}
                     {perm.isAdmin && <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Database size={20}/> Settings</NavLink>}
                 </nav>
                 <div className="nav-link" style={{ color: 'var(--alert-color)', marginTop: 'auto', marginBottom: 20 }} onClick={handleLogout}>

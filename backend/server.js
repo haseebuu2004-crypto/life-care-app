@@ -5,9 +5,13 @@ const compression = require('compression');
 const path = require('path');
 const apiRoutes = require('./routes/api');
 const db = require('./config/db');
+const cronService = require('./services/cronService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize background scheduled backups
+cronService.init();
 
 const allowedOrigins = [
     'http://localhost:5173',
