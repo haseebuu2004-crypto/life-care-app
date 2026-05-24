@@ -23,16 +23,17 @@ exports.getStats = async (req, res) => {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const ownerId = getOwnerId(req);
 
-        const [res1, res2, res3, res4, res5, res6, res7] = await Promise.all([
-            pool.query(`SELECT SUM(total_profit) as "totalProfit" FROM sales WHERE owner_id = $1`, [ownerId]),
-            pool.query(`SELECT SUM(pv.vp * si.qty) as "totalVp" FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1`, [ownerId]),
-            pool.query(`
-                SELECT 
-                    SUM(pv.sp * s.qty) as "stockValue",
-                    COUNT(CASE WHEN s.qty < 5 THEN 1 END) as "lowStock"
-                FROM stock s JOIN product_variants pv ON s.variant_id = pv.id
-                WHERE s.owner_id = $1
-            `, [ownerId]),
+        // Combine scalar queries into a single query to reduce connection overhead
+        const scalarQuery = `
+            SELECT 
+                (SELECT SUM(total_profit) FROM sales WHERE owner_id = $1) as "totalProfit",
+                (SELECT SUM(pv.vp * si.qty) FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1) as "totalVp",
+                (SELECT SUM(pv.sp * s.qty) FROM stock s JOIN product_variants pv ON s.variant_id = pv.id WHERE s.owner_id = $1) as "stockValue",
+                (SELECT COUNT(CASE WHEN s.qty < 5 THEN 1 END) FROM stock s JOIN product_variants pv ON s.variant_id = pv.id WHERE s.owner_id = $1) as "lowStock"
+        `;
+
+        const [scalarRes, res4, res5, res6, res7] = await Promise.all([
+            pool.query(scalarQuery, [ownerId]),
             pool.query(`
                 SELECT s.id, p.name as product_name, pv.flavor, s.qty
                 FROM stock s
@@ -68,13 +69,10 @@ exports.getStats = async (req, res) => {
             `, [ownerId])
         ]);
 
-        stats.totals.totalSalesProfit = res1.rows[0]?.totalProfit || 0;
-        stats.totals.totalVpSold = res2.rows[0]?.totalVp || 0;
-
-        if (res3.rows.length > 0) {
-            stats.totals.totalStockValue = res3.rows[0].stockValue || 0;
-            stats.totals.lowStockCount = parseInt(res3.rows[0].lowStock || 0);
-        }
+        stats.totals.totalSalesProfit = scalarRes.rows[0]?.totalProfit || 0;
+        stats.totals.totalVpSold = scalarRes.rows[0]?.totalVp || 0;
+        stats.totals.totalStockValue = scalarRes.rows[0]?.stockValue || 0;
+        stats.totals.lowStockCount = parseInt(scalarRes.rows[0]?.lowStock || 0);
 
         stats.lowStockItems = res4.rows || [];
 
