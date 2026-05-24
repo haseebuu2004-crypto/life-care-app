@@ -126,6 +126,20 @@ const useStore = create((set, get) => ({
             throw new Error(msg);
         }
     },
+    updateStockPrice: async (id, price) => {
+        try {
+            const res = await api.patch(`/stock/${id}/price`, { price });
+            // Update local state without full refresh for smooth UI
+            set((state) => ({
+                stock: state.stock.map(s => s.id === id ? { ...s, sp: price } : s)
+            }));
+            get().fetchDashboardStats().catch(console.error);
+            return extract(res);
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Failed to update price';
+            throw new Error(msg);
+        }
+    },
     deleteStock: async (id) => {
         try {
             const res = await api.delete(`/stock/${id}`);

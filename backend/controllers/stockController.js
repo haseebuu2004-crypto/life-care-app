@@ -121,6 +121,20 @@ exports.updateStockQuantity = async (req, res) => {
     }
 };
 
+exports.updateStockPrice = async (req, res) => {
+    try {
+        const { price } = req.body;
+        const ownerId = getOwnerId(req);
+        if (price === undefined || price < 0) return res.status(400).json({ success: false, message: "Valid price required" });
+
+        await pool.query('UPDATE product_variants SET sp = $1 WHERE id = $2 AND owner_id = $3', [price, req.params.id, ownerId]);
+        res.json({ success: true, data: { message: "Stock price updated" } });
+    } catch (error) {
+        console.error("Stock Price Update Error:", error.stack || error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.deleteStock = async (req, res) => {
     try {
         const ownerId = getOwnerId(req);
