@@ -15,7 +15,7 @@ class RestoreService {
         if (mimetype === 'text/csv' || originalName.endsWith('.csv')) {
             const workbook = xlsx.read(buffer, { type: 'buffer' });
             const sheetName = workbook.SheetNames[0];
-            data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
             return { type, data };
         } else if (originalName.endsWith('.xlsx')) {
             const workbook = xlsx.read(buffer, { type: 'buffer' });
@@ -23,14 +23,14 @@ class RestoreService {
                 return {
                     type: 'full',
                     data: {
-                        sales: workbook.Sheets['Sales'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Sales']) : [],
-                        attendance: workbook.Sheets['Attendance'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Attendance']) : [],
-                        products: workbook.Sheets['Products'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Products']) : []
+                        sales: workbook.Sheets['Sales'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Sales'], { raw: false }) : [],
+                        attendance: workbook.Sheets['Attendance'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Attendance'], { raw: false }) : [],
+                        products: workbook.Sheets['Products'] ? xlsx.utils.sheet_to_json(workbook.Sheets['Products'], { raw: false }) : []
                     }
                 };
             } else {
                 const sheetName = workbook.SheetNames[0];
-                data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+                data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
                 return { type, data };
             }
         } else {
@@ -156,8 +156,8 @@ class RestoreService {
             if (strategy === 'merge') {
                 // Check if sale already exists on this date for this customer
                 const { rows: existing } = await client.query(
-                    'SELECT id FROM sales WHERE DATE(date) = DATE($1) AND customer = $2 AND owner_id = $3 LIMIT 1',
-                    [sale.date, sale.customer, ownerId]
+                    'SELECT id FROM sales WHERE DATE(date) = DATE($1) AND customer = $2 AND total_profit = $3 AND owner_id = $4 LIMIT 1',
+                    [sale.date, sale.customer, sale.total_profit, ownerId]
                 );
                 
                 // If it already exists, we skip it to prevent duplicating items or messing up stock
