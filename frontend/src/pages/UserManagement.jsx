@@ -3,7 +3,7 @@ import useStore from '../store/useStore';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, Edit2, X, Check, Shield } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, Shield, Eye, EyeOff } from 'lucide-react';
 
 const ROLES = ['admin', 'user'];
 
@@ -27,6 +27,7 @@ function RoleBadge({ role }) {
 function AddUserModal({ onClose }) {
     const { addUser } = useStore();
     const [form, setForm] = useState({ username: '', password: '', role: 'user' });
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -54,7 +55,12 @@ function AddUserModal({ onClose }) {
                     </div>
                     <div className="form-group">
                         <label>Password</label>
-                        <input type="password" value={form.password} onChange={e=>setForm({...form, password: e.target.value})} required placeholder="Min 6 characters" minLength={6} />
+                        <div style={{ position: 'relative' }}>
+                            <input type={showPassword ? "text" : "password"} value={form.password} onChange={e=>setForm({...form, password: e.target.value})} required placeholder="Min 6 characters" minLength={6} style={{ paddingRight: '40px' }} />
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
                     <div className="form-group">
                         <label>Role</label>
