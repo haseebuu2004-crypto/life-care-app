@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Eye, EyeOff } from 'lucide-react';
 
 export function ResetPassword() {
     const { token } = useParams();
@@ -9,6 +10,8 @@ export function ResetPassword() {
     
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
@@ -50,11 +53,17 @@ export function ResetPassword() {
                 <form onSubmit={handleResetSubmit}>
                     <h3 style={{ textAlign: 'center', marginBottom: 20, color: '#374151', fontSize: '18px', textTransform: 'uppercase' }}>RESET PASSWORD</h3>
                     <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '14px', marginBottom: 20 }}>Please enter your new secure password.</p>
-                    <div className="form-group" style={{ marginBottom: 15 }}>
-                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required placeholder={`New Password`} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '16px' }} />
+                    <div className="form-group" style={{ marginBottom: 15, position: 'relative' }}>
+                        <input type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required placeholder={`New Password`} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '16px', paddingRight: '40px' }} />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 20 }}>
-                        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder={`Confirm Password`} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '16px' }} />
+                    <div className="form-group" style={{ marginBottom: 20, position: 'relative' }}>
+                        <input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder={`Confirm Password`} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '16px', paddingRight: '40px' }} />
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                            {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
                     </div>
                     <ul style={{ fontSize: '12px', color: '#6b7280', paddingLeft: 20, marginBottom: 20 }}>
                         <li style={{ color: newPassword.length >= 8 ? '#16a34a' : 'inherit' }}>Min 8 characters</li>
