@@ -160,6 +160,23 @@ async function createTables() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
+        // Backup Logs Table
+        await client.query(`CREATE TABLE IF NOT EXISTS backup_logs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            owner_id VARCHAR(255) NOT NULL,
+            backup_type VARCHAR(50) NOT NULL,
+            file_name VARCHAR(255) NOT NULL,
+            storage_provider VARCHAR(50) NOT NULL,
+            file_url TEXT,
+            file_size BIGINT,
+            status VARCHAR(50) NOT NULL,
+            created_by VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            restore_status VARCHAR(50) DEFAULT 'None',
+            restore_at TIMESTAMP,
+            notes TEXT
+        )`);
+
         // Performance Indexes
         await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer)`);

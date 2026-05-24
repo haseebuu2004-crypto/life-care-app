@@ -12,10 +12,19 @@ import { Settings } from './pages/Settings';
 import { UserManagement } from './pages/UserManagement';
 import { DataManagement } from './pages/DataManagement';
 import { LoginActivity } from './pages/LoginActivity';
+import { AdminBackupCenter } from './pages/AdminBackupCenter';
 
 function ProtectedRoute({ children }) {
     const { user } = useAuth();
     if (!user) return <Navigate to="/login" replace />;
+    return <Layout>{children}</Layout>;
+}
+
+function AdminRoute({ children }) {
+    const { user } = useAuth();
+    if (!user || user.role !== 'admin') {
+        return <Navigate to="/" replace />;
+    }
     return <Layout>{children}</Layout>;
 }
 
@@ -38,6 +47,7 @@ function App() {
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/users" element={<ProtectedRoute><UserManagement /></ProtectedRoute>} />
                 <Route path="/login-activity" element={<ProtectedRoute><LoginActivity /></ProtectedRoute>} />
+                <Route path="/admin/backups" element={<AdminRoute><AdminBackupCenter /></AdminRoute>} />
 
                 {/* Catch-all redirect to home */}
                 <Route path="*" element={<Navigate to="/" replace />} />
