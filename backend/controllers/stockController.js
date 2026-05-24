@@ -10,6 +10,7 @@ exports.getStock = async (req, res) => {
             JOIN products p ON pv.product_id = p.id 
             LEFT JOIN stock s ON s.variant_id = pv.id 
             WHERE pv.is_active = 1 AND p.is_active = 1 AND p.owner_id = $1
+            ORDER BY pv.id ASC
         `, [ownerId]);
         res.json({ success: true, data: rows });
     } catch (error) {

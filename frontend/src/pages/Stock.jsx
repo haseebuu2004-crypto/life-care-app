@@ -153,7 +153,7 @@ export function Stock() {
                 (s.flavor || '').toLowerCase().includes(q)
             );
         }
-        return result.sort((a, b) => a.product_name.localeCompare(b.product_name));
+        return result; // Backend already orders by insertion (pv.id ASC)
     }, [stock, debouncedSearch]);
 
     return (
