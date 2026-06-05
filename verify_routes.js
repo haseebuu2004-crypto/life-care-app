@@ -9,13 +9,13 @@ Module.prototype.require = function(path) {
 };
 
 const express = require('express');
-const dashboardRoutes = require('./backend/features/dashboard/dashboard.routes');
+const reportsRoutes = require('./backend/features/reports/reports.routes');
 
 const app = express();
-app.use('/api', dashboardRoutes);
+app.use('/api', reportsRoutes);
 
-console.log("Registered Routes in dashboard.routes.js:");
-dashboardRoutes.stack.forEach(layer => {
+console.log("Registered Routes in reports.routes.js:");
+reportsRoutes.stack.forEach(layer => {
     if (layer.route) {
         const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(', ');
         const path = layer.route.path;
