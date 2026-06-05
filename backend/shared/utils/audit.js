@@ -1,4 +1,4 @@
-const db = require('../db');
+const db = require('../../config/db');
 
 exports.logAction = async (actorId, action, tableName = null, recordId = null, oldJson = null, newJson = null) => {
     try {
