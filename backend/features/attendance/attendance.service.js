@@ -1,6 +1,6 @@
 const db = require('../../shared/db/connection');
-const audit = require('../../services/auditLogService');
-const cache = require('../../services/cacheService');
+const audit = require('../../shared/services/auditLogService');
+const cache = require('../../shared/services/cacheService');
 const queries = require('./attendance.queries');
 const customerService = require('../customers/customers.service');
 

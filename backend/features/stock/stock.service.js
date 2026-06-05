@@ -1,5 +1,5 @@
 const db = require('../../shared/db/connection');
-const audit = require('../../services/auditLogService');
+const audit = require('../../shared/services/auditLogService');
 const queries = require('./stock.queries');
 
 exports.getStock = async (ownerId) => {

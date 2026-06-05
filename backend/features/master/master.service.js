@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../../db');
 const queries = require('./master.queries');
-const audit = require('../../services/auditLogService');
+const audit = require('../../shared/services/auditLogService');
 
 const pool = db.pool;
 

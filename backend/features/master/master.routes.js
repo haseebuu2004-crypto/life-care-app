@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const masterController = require('./master.controller');
-const { authenticateToken, requireMaster } = require('../../middleware/authMiddleware');
+const { authenticateToken, requireMaster } = require('../../shared/middleware/authMiddleware');
 
 // ---------------------------------------------------------
 // MASTER TIER (TIER 1) - PREFIXED

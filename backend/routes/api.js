@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { apiLimiter } = require('../middleware/rateLimiters');
+const { apiLimiter } = require('../shared/middleware/rateLimiters');
 
 // Feature Routes
 const authRoutes = require('../features/auth/auth.routes');

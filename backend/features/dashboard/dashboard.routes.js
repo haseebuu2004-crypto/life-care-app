@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const dashboardController = require('./dashboard.controller');
-const { authenticateToken, requireAdmin } = require('../../middleware/authMiddleware');
+const { authenticateToken, requireAdmin } = require('../../shared/middleware/authMiddleware');
 
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);
 

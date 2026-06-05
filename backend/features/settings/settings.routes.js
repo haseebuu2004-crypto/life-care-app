@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const settingsController = require('./settings.controller');
-const { authenticateToken, requireAdmin, requireMaster } = require('../../middleware/authMiddleware');
-const validate = require('../../middleware/validate');
+const { authenticateToken, requireAdmin, requireMaster } = require('../../shared/middleware/authMiddleware');
+const validate = require('../../shared/middleware/validate');
 
 // ---------------------------------------------------------
 // DASHBOARD & CONFIGURATION SETTINGS
