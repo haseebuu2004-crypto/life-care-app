@@ -27,6 +27,10 @@ async function runHardening() {
         testUserId = ins.rows[0].id;
 
         const loginRes = await api('/auth/login', 'POST', { email: 'hardening_test@test.com', password: 'testpass' });
+        if (!loginRes.headers.get('set-cookie')) {
+            console.error("Login failed!", loginRes.data);
+            return;
+        }
         cookie = loginRes.headers.get('set-cookie').split(';')[0];
         console.log("Logged in user with force_password_change = true");
 

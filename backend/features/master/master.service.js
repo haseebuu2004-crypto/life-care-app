@@ -91,8 +91,8 @@ class MasterService {
         const updQ = queries.forceResetAdminPassword(hash, targetId);
         await db.query(updQ.text, updQ.values);
 
-        const invQ = require('../settings/settings.queries').invalidateAllSessions(targetId);
-        await db.query(invQ.text, invQ.values);
+        const authService = require('../auth/auth.service');
+        await authService.invalidateAllSessions(targetId);
 
         await audit.logAction(masterId, 'ADMIN_FORCE_RESET', 'users', targetId);
         return tempPassword;
