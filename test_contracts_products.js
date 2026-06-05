@@ -1,3 +1,28 @@
+const Module = require('module');
+const originalRequire = Module.prototype.require;
+
+let mockDbData = {};
+
+Module.prototype.require = function(path) {
+    if (path.includes('../migrations/index')) {
+        return { query: async () => ({ rows: [] }) };
+    }
+    if (path.includes('../db') || path.includes('../../shared/db/connection')) {
+        const fakeClient = {
+            query: async (sql, params) => mockDbData,
+            release: () => {}
+        };
+        return { 
+            pool: { connect: async () => fakeClient },
+            query: async (sql, params) => mockDbData 
+        };
+    }
+    if (path.includes('auditLogService') || path.includes('../../shared/utils/audit')) {
+        return { logAction: async () => {} };
+    }
+    return originalRequire.apply(this, arguments);
+};
+
 const oldController = require('./backend/controllers/productController');
 const newController = require('./backend/features/products/products.controller');
 
@@ -7,57 +32,39 @@ async function testContracts() {
     const reqMock = {
         user: { id: 1, email: 'test@example.com', role: 'admin', owner_id: 'owner123' },
         params: { id: 777 },
-        body: { name: 'Test', vendor_price: 150, vp: 5 }
+        body: { name: 'Test Product', vendor_price: 150, vp: 5, product_id: 123 }
     };
 
-    let oldStatus, oldJson;
-    const resOld = {
-        status: (code) => { oldStatus = code; return resOld; },
-        json: (data) => { oldJson = data; }
-    };
+    const runCompare = async (name, operation, mockData) => {
+        mockDbData = mockData;
+        
+        let oldJson, newJson;
+        const resOld = {
+            status: () => resOld,
+            json: (data) => { oldJson = data; }
+        };
+        const resNew = {
+            status: () => resNew,
+            json: (data) => { newJson = data; }
+        };
 
-    let newStatus, newJson;
-    const resNew = {
-        status: (code) => { newStatus = code; return resNew; },
-        json: (data) => { newJson = data; }
+        await oldController[operation](reqMock, resOld);
+        await newController[operation](reqMock, resNew);
+
+        const oldStr = JSON.stringify(oldJson);
+        const newStr = JSON.stringify(newJson);
+        
+        console.log(`\n--- ${name} ---`);
+        console.log(`OLD RESPONSE: ${oldStr}`);
+        console.log(`NEW RESPONSE: ${newStr}`);
+        console.log(`RESULT: ${oldStr === newStr ? 'MATCH' : 'NOT MATCH'}`);
     };
 
     try {
-        // We override dbOld and dbNew to just return fake data so we can compare the json shape
-        const Module = require('module');
-        const originalRequire = Module.prototype.require;
-        Module.prototype.require = function(path) {
-            if (path.includes('../db') || path.includes('../../shared/db/connection')) {
-                return { 
-                    pool: { connect: async () => ({
-                        query: async () => ({ rows: [{id: 1}] }),
-                        release: () => {}
-                    })},
-                    query: async () => ({ rows: [{id: 1, product_id: 1, name: 'T', vendor_price: 100, is_active: true}] }) 
-                };
-            }
-            if (path.includes('../migrations/index')) {
-                return { query: async () => ({ rows: [] }) };
-            }
-            return originalRequire.apply(this, arguments);
-        };
-        
-        // Reload controllers with mock
-        const oldC = require('./backend/controllers/productController');
-        const newC = require('./backend/features/products/products.controller');
-
-        oldStatus = 200; newStatus = 200;
-        await oldC.getProducts(reqMock, resOld);
-        await newC.getProducts(reqMock, resNew);
-        console.log(`getProducts - Old: ${oldStatus}, New: ${newStatus}`);
-        console.log(JSON.stringify(oldJson) === JSON.stringify(newJson) ? "GET Match!" : "Mismatch!");
-
-        oldStatus = 200; newStatus = 200;
-        await oldC.toggleProductStatus(reqMock, resOld);
-        await newC.toggleProductStatus(reqMock, resNew);
-        console.log(`toggleProductStatus - Old: ${oldStatus}, New: ${newStatus}`);
-        console.log(JSON.stringify(oldJson) === JSON.stringify(newJson) ? "TOGGLE Match!" : "Mismatch!");
-        
+        await runCompare('GET products', 'getProducts', { rows: [{ product_id: 1, product_name: 'ProdA', version_id: 2, vendor_price: 10000, volume_points: 10, version_is_active: true }] });
+        await runCompare('POST product', 'addProduct', { rows: [{ id: 999 }] });
+        await runCompare('Update product price', 'updateProductPrice', { rows: [{ id: 888 }] });
+        await runCompare('Add flavour', 'addFlavour', { rows: [{ id: 777 }] });
     } catch(e) {
         console.error(e);
     } finally {
