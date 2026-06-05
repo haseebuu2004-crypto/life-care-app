@@ -9,13 +9,13 @@ Module.prototype.require = function(path) {
 };
 
 const express = require('express');
-const attendanceRoutes = require('./backend/features/attendance/attendance.routes');
+const salesRoutes = require('./backend/features/sales/sales.routes');
 
 const app = express();
-app.use('/api', attendanceRoutes);
+app.use('/api', salesRoutes);
 
-console.log("Registered Routes in attendance.routes.js:");
-attendanceRoutes.stack.forEach(layer => {
+console.log("Registered Routes in sales.routes.js:");
+salesRoutes.stack.forEach(layer => {
     if (layer.route) {
         const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(', ');
         const path = layer.route.path;
