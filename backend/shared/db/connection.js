@@ -1,6 +1,5 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const runMigrations = require('../migrations/index');
 
 const pool = new Pool({
     connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,

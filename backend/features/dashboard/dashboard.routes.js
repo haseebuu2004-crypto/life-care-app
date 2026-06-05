@@ -4,8 +4,6 @@ const dashboardController = require('./dashboard.controller');
 const { authenticateToken, requireAdmin } = require('../../middleware/authMiddleware');
 
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);
-router.put('/admin/config/setup-complete', authenticateToken, requireAdmin, dashboardController.completeSetup);
-router.put('/settings/config', authenticateToken, requireAdmin, dashboardController.updateAdminConfig);
 
 // Data Management
 router.post('/data-management/delete', authenticateToken, requireAdmin, dashboardController.resetData);

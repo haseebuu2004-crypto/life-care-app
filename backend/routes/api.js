@@ -3,54 +3,34 @@ const router = express.Router();
 
 const { authenticateToken, requireAdmin, requireMaster } = require('../middleware/authMiddleware');
 
-const authController = require('../controllers/authController');
-const userController = require('../controllers/userController');
+const attendanceController = require('../controllers/attendanceController');
+const dashboardController = require('../controllers/dashboardController');
+const customerController = require('../controllers/customerController');
 const productController = require('../controllers/productController');
 const stockController = require('../controllers/stockController');
 const salesController = require('../controllers/salesController');
-const attendanceController = require('../controllers/attendanceController');
-const dashboardController = require('../controllers/dashboardController');
-const masterController = require('../controllers/masterController');
-const customerController = require('../controllers/customerController');
 const exportController = require('../controllers/exportController');
 const importController = require('../controllers/importController');
 const notificationController = require('../controllers/notificationController');
 const backupController = require('../features/backup/backup.controller');
 const validate = require('../middleware/validate');
-const { addSaleSchema, addAttendanceSchema, loginSchema } = require('../schemas/apiSchemas');
+const { addSaleSchema, addAttendanceSchema } = require('../schemas/apiSchemas');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
-const { loginLimiter, passwordResetLimiter, apiLimiter, reportLimiter, backupLimiter } = require('../middleware/rateLimiters');
+const { apiLimiter, reportLimiter, backupLimiter } = require('../middleware/rateLimiters');
+
+const settingsRoutes = require('../features/settings/settings.routes');
 
 // Apply API-wide rate limiting to everything except auth endpoints which have their own
 router.use(apiLimiter);
 
-// Auth (No JWT, Custom Cookies)
-router.post('/auth/login', loginLimiter, validate(loginSchema), authController.login);
-router.post('/auth/logout', authController.logout);
-router.post('/auth/forgot-password', passwordResetLimiter, authController.forgotPassword);
-router.post('/auth/reset-password', passwordResetLimiter, authController.resetPassword);
-router.post('/auth/change-password', authenticateToken, authController.changePassword);
-router.get('/auth/session', authenticateToken, authController.getSession);
-
-// Master Tier (Tier 1)
-router.get('/master/stats', authenticateToken, requireMaster, masterController.getAppStats);
-router.get('/master/sessions', authenticateToken, requireMaster, masterController.getLiveSessions);
-router.get('/master/audit-log', authenticateToken, requireMaster, masterController.getActivityLog);
-router.get('/master/admins', authenticateToken, requireMaster, masterController.getUsers);
-router.post('/master/admins', authenticateToken, requireMaster, masterController.createClubAdmin);
-router.post('/master/admins/:id/reset-password', authenticateToken, requireMaster, masterController.forceResetAdminPassword);
-router.put('/master/admins/:id/toggle-status', authenticateToken, requireMaster, masterController.toggleAdminStatus);
-router.put('/master/admins/:id/club-name', authenticateToken, requireMaster, masterController.updateAdminClubNameMaster);
-router.delete('/master/admins/:id', authenticateToken, requireMaster, masterController.deleteClubAdmin);
+// ---------------------------------------------------------
+// NEW SETTINGS ROUTES
+// ---------------------------------------------------------
+router.use('/', settingsRoutes);
 
 // Dashboard & System
-router.get('/admin/club-name', authenticateToken, requireAdmin, userController.getAdminClubName);
-router.put('/admin/club-name', authenticateToken, requireAdmin, userController.updateAdminClubName);
-router.get('/user/club-name', authenticateToken, userController.getUserClubName);
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);
-router.put('/admin/config/setup-complete', authenticateToken, requireAdmin, dashboardController.completeSetup);
-router.put('/settings/config', authenticateToken, requireAdmin, dashboardController.updateAdminConfig);
 
 // System & Imports/Exports
 router.get('/reports/export', authenticateToken, requireAdmin, reportLimiter, (req, res) => {
@@ -63,7 +43,7 @@ router.get('/reports/export', authenticateToken, requireAdmin, reportLimiter, (r
 router.post('/reports/import', authenticateToken, requireAdmin, backupLimiter, upload.single('file'), importController.importCSV);
 
 // Aliases for QA
-router.get('/settings/users', authenticateToken, requireAdmin, userController.getUsers);
+router.get('/settings/users', authenticateToken, requireAdmin, (req, res) => res.redirect('/api/users'));
 router.get('/reports', authenticateToken, requireAdmin, (req, res) => res.json({ success: true }));
 router.post('/data-management/delete', authenticateToken, requireAdmin, dashboardController.resetData);
 
@@ -84,19 +64,7 @@ router.post('/data-management/deleted/:type/:id/restore', authenticateToken, req
 router.delete('/system/reset', authenticateToken, requireAdmin, dashboardController.resetData);
 router.post('/system/reset/request-otp', authenticateToken, requireAdmin, dashboardController.requestResetOtp);
 router.post('/system/reset/confirm', authenticateToken, requireAdmin, dashboardController.confirmReset);
-router.delete('/account', authenticateToken, dashboardController.deleteAccount);
-router.get('/login-history', authenticateToken, requireAdmin, userController.getLoginHistory);
-
-// User Management
-router.put('/users/me/password', authenticateToken, userController.changePassword);
-router.get('/users', authenticateToken, requireAdmin, userController.getUsers);
-router.post('/users', authenticateToken, requireAdmin, userController.createUser);
-router.put('/users/:id/role', authenticateToken, requireAdmin, userController.updateUserRole);
-router.post('/users/:id/reset-password', authenticateToken, requireAdmin, userController.adminUpdateUserPassword);
-router.delete('/users/:id', authenticateToken, requireAdmin, userController.deleteUser);
-
-
-// Customers
+router.delete('/account', authenticateToken, dashboardController.deleteAccount);// Customers
 router.get('/customers', authenticateToken, customerController.getCustomers);
 router.post('/customers', authenticateToken, customerController.addCustomer);
 router.put('/customers/:id', authenticateToken, customerController.updateCustomer);
