@@ -1,3 +1,10 @@
+const Module = require('module');
+const originalRequire = Module.prototype.require;
+Module.prototype.require = function(path) {
+    if (path.includes('../migrations/index') || path.includes('../db')) return { query: () => {} };
+    return originalRequire.apply(this, arguments);
+};
+
 const db = require('./backend/shared/db/connection');
 const auth = require('./backend/shared/middleware/auth');
 const ownerScope = require('./backend/shared/middleware/ownerScope');
