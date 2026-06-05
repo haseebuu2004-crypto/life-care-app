@@ -16,18 +16,7 @@ router.post('/auth/reset-password', passwordResetLimiter, settingsController.res
 router.post('/auth/change-password', authenticateToken, settingsController.changePassword);
 router.get('/auth/session', authenticateToken, settingsController.getSession);
 
-// ---------------------------------------------------------
-// MASTER TIER (TIER 1) - PREFIXED
-// ---------------------------------------------------------
-router.get('/master/stats', authenticateToken, requireMaster, settingsController.getAppStats);
-router.get('/master/sessions', authenticateToken, requireMaster, settingsController.getLiveSessions);
-router.get('/master/audit-log', authenticateToken, requireMaster, settingsController.getActivityLog);
-router.get('/master/admins', authenticateToken, requireMaster, settingsController.getMasterAdmins);
-router.post('/master/admins', authenticateToken, requireMaster, settingsController.createClubAdmin);
-router.post('/master/admins/:id/reset-password', authenticateToken, requireMaster, settingsController.forceResetAdminPassword);
-router.put('/master/admins/:id/toggle-status', authenticateToken, requireMaster, settingsController.toggleAdminStatus);
-router.put('/master/admins/:id/club-name', authenticateToken, requireMaster, settingsController.updateAdminClubNameMaster);
-router.delete('/master/admins/:id', authenticateToken, requireMaster, settingsController.deleteClubAdmin);
+
 
 // ---------------------------------------------------------
 // DASHBOARD & CONFIGURATION SETTINGS

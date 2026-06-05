@@ -20,14 +20,16 @@ const upload = multer({ storage: multer.memoryStorage() });
 const { apiLimiter, reportLimiter, backupLimiter } = require('../middleware/rateLimiters');
 
 const settingsRoutes = require('../features/settings/settings.routes');
+const masterRoutes = require('../features/master/master.routes');
 
 // Apply API-wide rate limiting to everything except auth endpoints which have their own
 router.use(apiLimiter);
 
 // ---------------------------------------------------------
-// NEW SETTINGS ROUTES
+// NEW SETTINGS & MASTER ROUTES
 // ---------------------------------------------------------
 router.use('/', settingsRoutes);
+router.use('/master', masterRoutes);
 
 // Dashboard & System
 router.get('/dashboard/stats', authenticateToken, dashboardController.getStats);
