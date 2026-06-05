@@ -1,55 +1,45 @@
-import { useState } from 'react';
+"use client";
+import { useState, useMemo } from 'react';
 import useStore from '../store/useStore';
-import { X } from 'lucide-react';
+import { X, Package } from 'lucide-react';
+import { formatRupees } from '../utils/currency';
 
 export function AddStockModal({ onClose }) {
-    const { addStock } = useStore();
+    const { addStock, products } = useStore();
     
-    const [form, setForm] = useState({
-        product_name: '',
-        flavor: '',
-        vp: '',
-        sp: '',
-        qty: ''
-    });
-    
-    const [hasFlavour, setHasFlavour] = useState(false);
+    const [selectedVariantId, setSelectedVariantId] = useState('');
+    const [qty, setQty] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Only show products that are active (enabled)
+    const activeProducts = useMemo(() => {
+        return (products || []).filter(p => p.is_active === true);
+    }, [products]);
+
+    const selectedProduct = useMemo(() => {
+        if (!selectedVariantId) return null;
+        return activeProducts.find(p => p.version_id === selectedVariantId);
+    }, [selectedVariantId, activeProducts]);
 
     const onSubmit = async (e) => {
         e.preventDefault();
         
-        const normName = form.product_name.trim().toLowerCase();
-        const finalFlavor = (hasFlavour && form.flavor.trim() !== '') ? form.flavor.trim().toLowerCase() : 'base';
-        
-        // Frontend duplicate validation
-        const existingItems = useStore.getState().stock || [];
-        const isDuplicate = existingItems.some(item => {
-            const itemName = item.product_name.trim().toLowerCase();
-            const itemFlavor = (item.flavor || 'base').trim().toLowerCase();
-            return itemName === normName && itemFlavor === finalFlavor;
-        });
+        if (!selectedVariantId) {
+            useStore.getState().showToast("Please select a product", "error");
+            return;
+        }
 
-        if (isDuplicate) {
-            const displayFlavor = hasFlavour ? form.flavor.trim() : 'Base';
-            useStore.getState().showToast(
-                hasFlavour 
-                    ? `Product "${form.product_name.trim()}" with flavour "${displayFlavor}" already exists.`
-                    : `Product "${form.product_name.trim()}" already exists.`,
-                "error"
-            );
+        const quantity = parseInt(qty) || 0;
+        if (quantity <= 0) {
+            useStore.getState().showToast("Quantity must be greater than 0", "error");
             return;
         }
 
         try {
             setLoading(true);
             await addStock({
-                productName: form.product_name,
-                hasFlavours: hasFlavour,
-                flavour: hasFlavour ? form.flavor : '',
-                volumePoint: parseFloat(form.vp) || 0,
-                price: parseFloat(form.sp) || 0,
-                quantity: parseInt(form.qty) || 0
+                variantId: selectedVariantId,
+                quantity: quantity
             });
             useStore.getState().showToast("Stock added successfully", "success");
             onClose();
@@ -65,80 +55,83 @@ export function AddStockModal({ onClose }) {
         <div className="modal-overlay">
             <div className="modal">
                 <div className="modal-header">
-                    <span>Add New Stock</span>
-                    <button onClick={onClose} className="btn icon-btn"><X size={20}/></button>
+                    <span>Add Stock Inventory</span>
+                    <button type="button" onClick={onClose} className="btn icon-btn"><X size={20}/></button>
                 </div>
-                <form onSubmit={onSubmit}>
-                    <div className="form-group">
-                        <label>Product Name</label>
-                        <input 
-                            value={form.product_name} 
-                            onChange={e=>setForm({...form, product_name: e.target.value})} 
-                            required 
-                            placeholder="e.g. Formula 1"
-                        />
-                    </div>
-                    
-                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <input 
-                            type="checkbox" 
-                            id="hasFlavour"
-                            checked={hasFlavour}
-                            onChange={(e) => setHasFlavour(e.target.checked)}
-                            style={{ width: 'auto' }}
-                        />
-                        <label htmlFor="hasFlavour" style={{ margin: 0, cursor: 'pointer' }}>Has Flavours?</label>
-                    </div>
 
-                    {hasFlavour && (
+                {activeProducts.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-light)' }}>
+                        <Package size={48} style={{ opacity: 0.2, margin: '0 auto 10px' }} />
+                        <p>No active products found.</p>
+                        <p style={{ fontSize: 13, marginTop: 10 }}>Please define and enable products in the <strong>Product Mgr</strong> first.</p>
+                    </div>
+                ) : (
+                    <form onSubmit={onSubmit}>
                         <div className="form-group">
-                            <label>Flavour</label>
+                            <label>Select Product</label>
+                            <select 
+                                value={selectedVariantId}
+                                onChange={(e) => setSelectedVariantId(e.target.value)}
+                                required
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                            >
+                                <option value="" disabled>-- Select a product --</option>
+                                {activeProducts.map(p => {
+                                    const firstFlavour = p.flavours && p.flavours.length > 0 ? p.flavours[0].name : 'Base';
+                                    return (
+                                        <option key={p.version_id} value={p.version_id}>
+                                            {p.name} {firstFlavour !== 'Base' ? `(${firstFlavour})` : ''} - {formatRupees(p.vendor_price * 100)} ({p.vp} VP)
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+
+                        {selectedProduct && (
+                            <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>
+                                    <span style={{ fontSize: 12, color: '#64748b', display: 'block' }}>Vendor Price</span>
+                                    <strong>{formatRupees(selectedProduct.vendor_price * 100)}</strong>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: 12, color: '#64748b', display: 'block' }}>Unit V.P</span>
+                                    <strong>{selectedProduct.vp}</strong>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="form-group">
+                            <label>Quantity to Add</label>
                             <input 
-                                value={form.flavor} 
-                                onChange={e=>setForm({...form, flavor: e.target.value})} 
-                                required={hasFlavour} 
-                                placeholder="e.g. Mango"
+                                type="number" min="1"
+                                value={qty} 
+                                onChange={e=>setQty(e.target.value)} 
+                                required 
+                                placeholder="Enter quantity"
                             />
                         </div>
-                    )}
 
-                    <div className="form-group">
-                        <label>Volume Points (V.P)</label>
-                        <input 
-                            type="number" step="0.01" min="0"
-                            value={form.vp} 
-                            onChange={e=>setForm({...form, vp: e.target.value})} 
-                            required 
-                        />
-                    </div>
-                    
-                    <div className="form-group">
-                        <label>Our Price (₹)</label>
-                        <input 
-                            type="number" min="0" step="0.01"
-                            value={form.sp} 
-                            onChange={e=>setForm({...form, sp: e.target.value})} 
-                            required 
-                        />
-                    </div>
-                    
-                    <div className="form-group">
-                        <label>Initial Quantity</label>
-                        <input 
-                            type="number" min="0"
-                            value={form.qty} 
-                            onChange={e=>setForm({...form, qty: e.target.value})} 
-                            required 
-                        />
-                    </div>
+                        {selectedProduct && qty > 0 && (
+                            <div style={{ background: '#eff6ff', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #bfdbfe' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                    <span style={{ color: '#1e3a8a', fontWeight: 500 }}>Total Value:</span>
+                                    <strong style={{ color: '#1e3a8a', fontSize: '18px' }}>{formatRupees(selectedProduct.vendor_price * qty * 100)}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: '#1e3a8a', fontWeight: 500 }}>Total V.P:</span>
+                                    <strong style={{ color: '#1e3a8a' }}>{(selectedProduct.vp * qty).toFixed(2)}</strong>
+                                </div>
+                            </div>
+                        )}
 
-                    <div className="flex justify-between" style={{ marginTop: 20 }}>
-                        <button type="button" onClick={onClose} className="btn btn-outline" disabled={loading}>Cancel</button>
-                        <button type="submit" className="btn btn-primary" disabled={loading}>
-                            {loading ? 'Saving...' : 'Save Stock'}
-                        </button>
-                    </div>
-                </form>
+                        <div className="flex justify-between" style={{ marginTop: 20 }}>
+                            <button type="button" onClick={onClose} className="btn btn-outline" disabled={loading}>Cancel</button>
+                            <button type="submit" className="btn btn-primary" disabled={loading || !selectedVariantId || qty <= 0}>
+                                {loading ? 'Saving...' : 'Add Stock'}
+                            </button>
+                        </div>
+                    </form>
+                )}
             </div>
         </div>
     );

@@ -1,26 +1,70 @@
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
+const db = require('../db');
 
-const SECRET = process.env.JWT_SECRET || 'fallback-secret-key-change-in-production';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'fallback-refresh-secret-key';
+async function authenticateToken(req, res, next) {
+    const sessionId = req.cookies?.session_token;
 
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    if (!sessionId) return res.status(401).json({ success: false, message: "Access denied: Missing token" });
 
-    if (!token) return res.status(401).json({ success: false, message: "Access denied: Missing token" });
+    try {
+        const result = await db.query(
+            `SELECT s.id as session_id, s.expires_at, u.id, u.email, u.role, u.owner_id, u.is_active, u.force_password_change 
+             FROM sessions s 
+             JOIN users u ON s.user_id = u.id 
+             WHERE s.id = $1 AND s.expires_at > NOW() AND s.invalidated_at IS NULL`,
+            [sessionId]
+        );
 
-    jwt.verify(token, SECRET, (err, user) => {
-        if (err) return res.status(403).json({ success: false, message: "Access denied: Invalid or expired token" });
+        if (result.rows.length === 0) {
+            return res.status(403).json({ success: false, message: "Access denied: Invalid or expired session" });
+        }
+
+        const user = result.rows[0];
+
+        if (!user.is_active) {
+            return res.status(403).json({ success: false, message: "Account is deactivated." });
+        }
+
         req.user = user;
+        
+        // Force password change interceptor
+        if (user.force_password_change && req.path !== '/auth/change-password' && req.path !== '/auth/logout') {
+            return res.status(403).json({ 
+                success: false, 
+                forcePasswordChange: true, 
+                message: "You must change your temporary password before continuing." 
+            });
+        }
+
+        // Asynchronously bump last activity
+        db.query(`UPDATE sessions SET last_activity_at = NOW() WHERE id = $1`, [sessionId]).catch(e => console.error("Failed to bump session activity", e));
+
         next();
-    });
+    } catch (dbErr) {
+        console.error("Session verification error:", dbErr);
+        return res.status(500).json({ success: false, message: "Internal server error during auth." });
+    }
 }
 
 const getOwnerId = (req) => {
-    // Rely on JWT embedded owner_id for perfect Staff/Admin multi-tenant isolation.
-    // Fallback to email/username only if legacy token is used before they expire in 7d.
-    return req.user.owner_id || (req.user.email ? req.user.email.trim().toLowerCase() : (req.user.username || String(req.user.id)));
+    // Rely strictly on db-enforced owner_id
+    return req.user.owner_id || req.user.id;
 };
 
-module.exports = { authenticateToken, SECRET, REFRESH_SECRET, getOwnerId };
+function requireAdmin(req, res, next) {
+    console.log("requireAdmin check ->", req.user?.email, "role:", req.user?.role, "path:", req.path);
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'master')) {
+        next();
+    } else {
+        res.status(403).json({ success: false, message: "Forbidden: Admin access required." });
+    }
+}
+
+function requireMaster(req, res, next) {
+    if (req.user && req.user.role === 'master') {
+        next();
+    } else {
+        res.status(403).json({ success: false, message: "Forbidden: Master access required." });
+    }
+}
+
+module.exports = { authenticateToken, requireAdmin, requireMaster, getOwnerId };

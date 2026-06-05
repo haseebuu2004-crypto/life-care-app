@@ -11,14 +11,30 @@ const extract = (response) => {
     return d;
 };
 
+// Helper to safely extract error messages from standardized API error responses
+const getErrorMsg = (error, defaultMsg) => {
+    const data = error.response?.data;
+    if (!data) return defaultMsg;
+    if (data.message) return data.message;
+    if (data.error) {
+        if (typeof data.error === 'string') return data.error;
+        if (data.error.message) return data.error.message;
+    }
+    return defaultMsg;
+};
+
 const useStore = create((set, get) => ({
     products: [],
     stock: [],
     sales: [],
-    user: JSON.parse(localStorage.getItem("user")) || null,
+    user: typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem("user")) || null) : null,
     attendance: [],
     users: [],
+    customers: [],
+    deletedRecords: [],
     dashboardStats: null,
+    clubName: null,
+    unreadCount: 0,
     isLoading: false,
     toast: null,
     
@@ -35,7 +51,10 @@ const useStore = create((set, get) => ({
             sales: [],
             attendance: [],
             users: [],
+            customers: [],
+            deletedRecords: [],
             dashboardStats: null,
+            clubName: null,
             toast: null
         });
     },
@@ -64,10 +83,68 @@ const useStore = create((set, get) => ({
             set({ attendance: extract(a) || [] });
         } catch (error) { console.error(error); }
     },
-    fetchDashboardStats: async () => {
+    fetchCustomers: async () => {
         try {
-            const ds = await api.get('/dashboard/stats');
+            const c = await api.get('/customers');
+            set({ customers: extract(c) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchDashboardStats: async (start = '', end = '') => {
+        try {
+            const params = new URLSearchParams();
+            if (start) params.append('startDate', start);
+            if (end) params.append('endDate', end);
+            const query = params.toString() ? `?${params.toString()}` : '';
+            const ds = await api.get(`/dashboard/stats${query}`);
             set({ dashboardStats: extract(ds) || null });
+        } catch (error) { console.error(error); }
+    },
+    fetchClubName: async () => {
+        try {
+            const user = get().user;
+            if (!user || user.role === 'master') return;
+            const endpoint = user.role === 'admin' ? '/admin/club-name' : '/user/club-name';
+            const res = await api.get(endpoint);
+            if (res.data && res.data.success) {
+                set({ clubName: res.data.club_name });
+                if (typeof window !== 'undefined' && res.data.club_name) {
+                    localStorage.setItem('savedClubName', res.data.club_name);
+                }
+            }
+        } catch (error) { console.error(error); }
+    },
+    updateClubName: async (name) => {
+        try {
+            const res = await api.put('/admin/club-name', { club_name: name });
+            if (res.data && res.data.success) {
+                set({ clubName: res.data.club_name });
+                if (typeof window !== 'undefined' && res.data.club_name) {
+                    localStorage.setItem('savedClubName', res.data.club_name);
+                }
+                return res.data;
+            }
+        } catch (error) {
+            throw new Error(getErrorMsg(error, 'Failed to update club name'));
+        }
+    },
+    fetchDeletedRecords: async () => {
+        try {
+            const res = await api.get('/data-management/deleted');
+            set({ deletedRecords: extract(res) || [] });
+        } catch (error) { console.error(error); }
+    },
+    restoreDeletedRecord: async (type, id) => {
+        try {
+            const res = await api.post(`/data-management/deleted/${type}/${id}/restore`);
+            return res.data;
+        } catch (error) {
+            throw new Error(getErrorMsg(error, 'Failed to restore record'));
+        }
+    },
+    fetchUnreadCount: async () => {
+        try {
+            const countRes = await api.get('/notifications/unread-count');
+            set({ unreadCount: countRes.data.count || 0 });
         } catch (error) { console.error(error); }
     },
 
@@ -79,7 +156,9 @@ const useStore = create((set, get) => ({
                 get().fetchStock(),
                 get().fetchSales(),
                 get().fetchAttendance(),
-                get().fetchDashboardStats()
+                get().fetchCustomers(),
+                get().fetchDashboardStats(),
+                get().fetchUnreadCount()
             ]);
         } catch (error) {
             console.error('fetchData error:', error);
@@ -89,7 +168,27 @@ const useStore = create((set, get) => ({
         }
     },
 
-
+    // Product Actions
+    addProduct: async (payload) => {
+        try {
+            const res = await api.post('/products', payload);
+            Promise.all([get().fetchProducts()]).catch(console.error);
+            return extract(res);
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add product';
+            throw new Error(msg);
+        }
+    },
+    toggleProduct: async (id, isActive) => {
+        try {
+            const res = await api.put(`/products/${id}/toggle`, { isActive });
+            Promise.all([get().fetchProducts(), get().fetchStock(), get().fetchDashboardStats()]).catch(console.error);
+            return extract(res);
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Failed to toggle product status';
+            throw new Error(msg);
+        }
+    },
 
     // Stock Actions
     addStock: async (payload) => {
@@ -117,7 +216,7 @@ const useStore = create((set, get) => ({
             const res = await api.patch(`/stock/${id}`, { quantity });
             // Update local state without full refresh for smooth UI
             set((state) => ({
-                stock: state.stock.map(s => s.id === id ? { ...s, qty: quantity } : s)
+                stock: state.stock.map(s => s.stock_id === id ? { ...s, qty: quantity } : s)
             }));
             get().fetchDashboardStats().catch(console.error);
             return extract(res);
@@ -126,12 +225,12 @@ const useStore = create((set, get) => ({
             throw new Error(msg);
         }
     },
-    updateStockPrice: async (id, price) => {
+    updateStockPrice: async (product_id, vp, sp) => {
         try {
-            const res = await api.patch(`/stock/${id}/price`, { price });
+            const res = await api.put(`/products/${product_id}/price`, { vendor_price: vp, selling_price: sp });
             // Update local state without full refresh for smooth UI
             set((state) => ({
-                stock: state.stock.map(s => s.id === id ? { ...s, sp: price } : s)
+                stock: state.stock.map(s => s.product_id === product_id ? { ...s, sp: sp, vp: vp } : s)
             }));
             get().fetchDashboardStats().catch(console.error);
             return extract(res);
@@ -168,8 +267,7 @@ const useStore = create((set, get) => ({
             Promise.all([get().fetchAttendance(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to log attendance';
-            throw new Error(msg);
+            throw new Error(getErrorMsg(error, 'Failed to log attendance'));
         }
     },
     deleteAttendance: async (id) => {
@@ -190,8 +288,7 @@ const useStore = create((set, get) => ({
             Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add sale';
-            throw new Error(msg);
+            throw new Error(getErrorMsg(error, 'Failed to add sale'));
         }
     },
     deleteSale: async (id) => {
@@ -229,7 +326,7 @@ const useStore = create((set, get) => ({
         try {
             const res = await api.post('/users', payload);
             await get().fetchUsers();
-            return extract(res);
+            return res.data;
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add user';
             throw new Error(msg);
@@ -252,6 +349,15 @@ const useStore = create((set, get) => ({
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete user';
+            throw new Error(msg);
+        }
+    },
+    adminUpdateUserPassword: async (id, newPassword) => {
+        try {
+            const res = await api.post(`/users/${id}/reset-password`, { newPassword });
+            return extract(res);
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Failed to update user password';
             throw new Error(msg);
         }
     },
@@ -284,8 +390,16 @@ const useStore = create((set, get) => ({
             await get().fetchData();
             return extract(res);
         } catch (error) {
-            const msg = error.response?.data?.message || 'Failed to clear sales data';
-            throw new Error(msg);
+            throw new Error(getErrorMsg(error, 'Failed to clear sales data'));
+        }
+    },
+    updateAdminConfig: async (config) => {
+        try {
+            const res = await api.put('/settings/config', config);
+            await get().fetchDashboardStats();
+            return extract(res);
+        } catch (error) {
+            throw new Error(getErrorMsg(error, 'Failed to update system configuration'));
         }
     },
     resetData: async (password) => {
@@ -298,13 +412,13 @@ const useStore = create((set, get) => ({
             throw new Error(msg);
         }
     },
-    exportReport: async (type) => {
+    exportReport: async (type, range = 'all') => {
         try {
-            const res = await api.get(`/reports/export?type=${type}`, { responseType: 'blob' });
+            const res = await api.get(`/reports/export?type=${type}&range=${range}`, { responseType: 'blob' });
             const url = window.URL.createObjectURL(new Blob([res.data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `${type}_report_${new Date().toISOString().split('T')[0]}.pdf`);
+            link.setAttribute('download', `${type}_report_${range}_${new Date().toISOString().split('T')[0]}.pdf`);
             document.body.appendChild(link);
             link.click();
             link.remove();

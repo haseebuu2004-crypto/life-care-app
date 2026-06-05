@@ -4,99 +4,128 @@ const { createObjectCsvStringifier } = require('csv-writer');
 
 class BackupService {
     async getExportData(type, ownerId) {
-        let query = '';
-        let params = [ownerId];
+        if (!ownerId) throw new Error("Owner ID is required for backup.");
+        
+        const data = {};
 
         switch (type.toLowerCase()) {
             case 'customers':
-                // For now, customers are derived from sales/attendance or users if there is a table
-                query = `SELECT DISTINCT name as customer_name, TO_CHAR(MAX(date), 'YYYY-MM-DD') as last_active 
-                         FROM (
-                             SELECT customer as name, date FROM sales WHERE owner_id = $1
-                             UNION ALL
-                             SELECT name, date FROM attendance WHERE owner_id = $1
-                         ) as combined
-                         GROUP BY name ORDER BY last_active DESC`;
-                break;
-            case 'sales':
-                query = `
-                    SELECT TO_CHAR(s.date, 'YYYY-MM-DD') as date, s.customer, s.total_profit, p.name as product_name, pv.flavor, si.qty 
-                    FROM sales s
-                    LEFT JOIN sale_items si ON s.id = si.sale_id
-                    LEFT JOIN product_variants pv ON si.variant_id = pv.id
-                    LEFT JOIN products p ON pv.product_id = p.id
-                    WHERE s.owner_id = $1
-                    ORDER BY s.date DESC
-                `;
+                data.customers = (await pool.query('SELECT id, owner_id, name, phone, member_code, joined_at as date, is_active, created_at FROM customers WHERE owner_id = $1', [ownerId])).rows;
                 break;
             case 'attendance':
-                query = `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date, name, status, others_deduction, shake_profit FROM attendance WHERE owner_id = $1 ORDER BY date DESC`;
+                data.attendance = (await pool.query('SELECT id, owner_id, customer_id, attendance_date, type, (shake_amount / 100.0)::float as shake_amount, recorded_by, created_at, is_deleted, deleted_at FROM attendance WHERE owner_id = $1', [ownerId])).rows;
+                break;
+            case 'sales':
+                data.sales = (await pool.query('SELECT id, owner_id, customer_id, sale_date, created_at, recorded_by, is_deleted, deleted_at, deleted_by FROM sales WHERE owner_id = $1', [ownerId])).rows;
+                data.sale_items = (await pool.query('SELECT si.id, si.sale_id, si.product_version_id, si.flavour_id, si.quantity, (si.price_charged / 100.0)::float as price_charged, (si.standard_price_snap / 100.0)::float as standard_price_snap, (si.vendor_price_snap / 100.0)::float as vendor_price_snap FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1', [ownerId])).rows;
                 break;
             case 'products':
-                query = `
-                    SELECT p.name as product_name, pv.flavor, pv.vp, pv.sp, s.qty as stock_quantity
-                    FROM products p
-                    JOIN product_variants pv ON p.id = pv.product_id
-                    LEFT JOIN stock s ON pv.id = s.variant_id
-                    WHERE p.owner_id = $1 AND pv.is_active = 1
-                `;
+                data.products = (await pool.query('SELECT id, owner_id, name, created_at FROM products WHERE owner_id = $1', [ownerId])).rows;
+                data.product_versions = (await pool.query('SELECT pv.id, pv.product_id, (pv.vendor_price / 100.0)::float as vendor_price, pv.is_active, pv.effective_from, pv.effective_to, pv.created_by FROM product_versions pv JOIN products p ON pv.product_id = p.id WHERE p.owner_id = $1', [ownerId])).rows;
+                data.flavours = (await pool.query('SELECT id, product_id, owner_id, name, is_active, created_at FROM flavours WHERE owner_id = $1', [ownerId])).rows;
+                data.stock = (await pool.query('SELECT id, owner_id, product_version_id, quantity, (vendor_price_snap / 100.0)::float as vendor_price_snap, added_at, added_by FROM stock WHERE owner_id = $1', [ownerId])).rows;
                 break;
             case 'full':
-                // Full returns multiple datasets
-                const [sales, attendance, products] = await Promise.all([
-                    this.getExportData('sales', ownerId),
-                    this.getExportData('attendance', ownerId),
-                    this.getExportData('products', ownerId)
-                ]);
-                return { sales, attendance, products };
+                data.customers = (await pool.query('SELECT id, owner_id, name, phone, member_code, joined_at as date, is_active, created_at FROM customers WHERE owner_id = $1', [ownerId])).rows;
+                data.attendance = (await pool.query('SELECT id, owner_id, customer_id, attendance_date, type, (shake_amount / 100.0)::float as shake_amount, recorded_by, created_at, is_deleted, deleted_at FROM attendance WHERE owner_id = $1', [ownerId])).rows;
+                data.sales = (await pool.query('SELECT id, owner_id, customer_id, sale_date, created_at, recorded_by, is_deleted, deleted_at, deleted_by FROM sales WHERE owner_id = $1', [ownerId])).rows;
+                data.sale_items = (await pool.query('SELECT si.id, si.sale_id, si.product_version_id, si.flavour_id, si.quantity, (si.price_charged / 100.0)::float as price_charged, (si.standard_price_snap / 100.0)::float as standard_price_snap, (si.vendor_price_snap / 100.0)::float as vendor_price_snap FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1', [ownerId])).rows;
+                data.products = (await pool.query('SELECT id, owner_id, name, created_at FROM products WHERE owner_id = $1', [ownerId])).rows;
+                data.product_versions = (await pool.query('SELECT pv.id, pv.product_id, (pv.vendor_price / 100.0)::float as vendor_price, pv.is_active, pv.effective_from, pv.effective_to, pv.created_by FROM product_versions pv JOIN products p ON pv.product_id = p.id WHERE p.owner_id = $1', [ownerId])).rows;
+                data.flavours = (await pool.query('SELECT id, product_id, owner_id, name, is_active, created_at FROM flavours WHERE owner_id = $1', [ownerId])).rows;
+                data.stock = (await pool.query('SELECT id, owner_id, product_version_id, quantity, (vendor_price_snap / 100.0)::float as vendor_price_snap, added_at, added_by FROM stock WHERE owner_id = $1', [ownerId])).rows;
+                break;
             default:
                 throw new Error('Invalid backup type');
         }
 
-        const { rows } = await pool.query(query, params);
-        return rows;
+        return data;
     }
 
-    async generateExcel(data, type) {
+    async generateExcel(data, type, ownerId) {
         const workbook = xlsx.utils.book_new();
-        
-        if (type.toLowerCase() === 'full') {
-            const salesSheet = xlsx.utils.json_to_sheet(data.sales);
-            const attendanceSheet = xlsx.utils.json_to_sheet(data.attendance);
-            const productsSheet = xlsx.utils.json_to_sheet(data.products);
+        const exportedAt = new Date().toISOString();
+
+        for (const [sheetName, rows] of Object.entries(data)) {
+            // Prepend Metadata row
+            const metadataRow = { 
+                id: `type=${type}`, 
+                owner_id: `owner_id=${ownerId}`, 
+                name: `version=1.0`, 
+                created_at: `exported_at=${exportedAt}` 
+            };
+            // To ensure keys match the first real row, we dynamically assign metadata values to the keys of the dataset.
+            // But if dataset is empty, we still need to provide metadata.
+            let headers = Object.keys(rows.length > 0 ? rows[0] : metadataRow);
             
-            xlsx.utils.book_append_sheet(workbook, salesSheet, 'Sales');
-            xlsx.utils.book_append_sheet(workbook, attendanceSheet, 'Attendance');
-            xlsx.utils.book_append_sheet(workbook, productsSheet, 'Products');
-        } else {
-            const sheet = xlsx.utils.json_to_sheet(data);
-            xlsx.utils.book_append_sheet(workbook, sheet, type);
+            const meta = {};
+            meta[headers[0] || 'id'] = `type=${type}`;
+            meta[headers[1] || 'owner_id'] = `owner_id=${ownerId}`;
+            meta[headers[2] || 'name'] = `version=1.0`;
+            meta[headers[3] || 'created_at'] = `exported_at=${exportedAt}`;
+
+            const combinedData = [meta, ...rows];
+            const sheet = xlsx.utils.json_to_sheet(combinedData);
+
+            // Hide metadata row (row index 1 in Excel, beneath headers)
+            if (!sheet['!rows']) sheet['!rows'] = [];
+            sheet['!rows'][1] = { hidden: true, hpx: 0 };
+
+            xlsx.utils.book_append_sheet(workbook, sheet, sheetName);
         }
 
         return xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     }
 
-    async generateCSV(data, type) {
-        if (type.toLowerCase() === 'full') {
-            throw new Error('CSV format does not support multi-sheet full backups. Use Excel.');
+    async generateCSV(data, type, ownerId) {
+        const keys = Object.keys(data);
+        if (keys.length > 1) {
+            throw new Error('CSV format does not support multi-sheet exports. Please use Excel.');
         }
 
-        if (!data || data.length === 0) return '';
+        const sheetName = keys[0];
+        const rows = data[sheetName] || [];
+        
+        const exportedAt = new Date().toISOString();
+        const meta = { 
+            col1: `type=${type}`, 
+            col2: `owner_id=${ownerId}`, 
+            col3: `version=1.0`, 
+            col4: `exported_at=${exportedAt}` 
+        };
 
-        const headers = Object.keys(data[0]).map(key => ({ id: key, title: key }));
+        if (rows.length === 0) {
+            return `type=${type},owner_id=${ownerId},version=1.0,exported_at=${exportedAt}\n`;
+        }
+
+        const headers = Object.keys(rows[0]).map(key => ({ id: key, title: key }));
         const csvStringifier = createObjectCsvStringifier({ header: headers });
         
+        let metaRowData = {};
+        const headerKeys = Object.keys(rows[0]);
+        metaRowData[headerKeys[0]] = meta.col1;
+        metaRowData[headerKeys[1]] = meta.col2;
+        metaRowData[headerKeys[2]] = meta.col3;
+        metaRowData[headerKeys[3]] = meta.col4;
+
         const headerRow = csvStringifier.getHeaderString();
-        const bodyRows = csvStringifier.stringifyRecords(data);
+        const bodyRows = csvStringifier.stringifyRecords([metaRowData, ...rows]);
         
         return headerRow + bodyRows;
     }
 
-    generateFileName(type, format) {
+    generateFileName(type, format, clubName = '') {
         const date = new Date();
         const dateStr = date.toISOString().split('T')[0].replace(/-/g, '_');
         const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '');
-        return `backup_${type.toLowerCase()}_${dateStr}_${timeStr}.${format}`;
+        
+        let prefix = 'backup';
+        if (clubName) {
+            const slug = clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            prefix = `${slug}_backup`;
+        }
+        
+        return `${prefix}_${type.toLowerCase()}_${dateStr}_${timeStr}.${format}`;
     }
 }
 

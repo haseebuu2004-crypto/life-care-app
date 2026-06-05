@@ -1,0 +1,245 @@
+"use client";
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import useStore from '../store/useStore';
+import { formatRupees } from '../utils/currency';
+import { usePermissions } from '../hooks/usePermissions';
+import { Navigate } from "@/utils/routerShim";
+import { TrendingUp, Zap, BarChart2, Package, AlertTriangle, Users, Download, Trash2, Calendar } from 'lucide-react';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { SetupWizard } from './SetupWizard';
+import { LoginActivity } from './LoginActivity';
+
+function AdminMetricCard({ icon: Icon, title, value, color, subtitle }) {
+    return (
+        <div className="card" style={{ borderLeft: `4px solid ${color}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-light)', fontSize: 13 }}>
+                <Icon size={15} color={color} />
+                <span>{title}</span>
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color }}>{value !== undefined && value !== null && value !== '' ? value : '0'}</div>
+            {subtitle && <div style={{ fontSize: 12, color: 'var(--text-light)' }}>{subtitle}</div>}
+        </div>
+    );
+}
+
+function DashboardInner() {
+    const dashboardStats = useStore(state => state.dashboardStats);
+    const clubName = useStore(state => state.clubName);
+    const fetchClubName = useStore(state => state.fetchClubName);
+    const isLoading = useStore(state => state.isLoading);
+    const fetchDashboardStats = useStore(state => state.fetchDashboardStats);
+    const fetchUsers = useStore(state => state.fetchUsers);
+    const perm = usePermissions();
+    const [dateRange, setDateRange] = useState('month'); // today, week, month, custom
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
+
+    useEffect(() => {
+        if (perm.isAdmin) {
+            fetchUsers();
+            fetchClubName();
+        }
+    }, [perm.isAdmin, fetchUsers, fetchClubName]);
+
+    const loadStats = useCallback(() => {
+        const now = new Date();
+        let start = '';
+        let end = now.toISOString().split('T')[0];
+
+        if (dateRange === 'today') {
+            start = end;
+        } else if (dateRange === 'week') {
+            const weekAgo = new Date(now);
+            weekAgo.setDate(now.getDate() - 7);
+            start = weekAgo.toISOString().split('T')[0];
+        } else if (dateRange === 'month') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        } else if (dateRange === 'custom') {
+            if (!customStart || !customEnd) return; // Wait until both are selected
+            start = customStart;
+            end = customEnd;
+        }
+
+        fetchDashboardStats(start, end);
+    }, [dateRange, customStart, customEnd, fetchDashboardStats]);
+
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
+
+    if (!perm.canViewOverview) {
+        return <Navigate to="/sales" replace />;
+    }
+
+    // Show loading state while data is being fetched and we don't have old data
+    if (isLoading && !dashboardStats) {
+        return (
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-light)' }}>
+                <div className="loader" style={{ margin: '0 auto 20px' }}></div>
+                Loading overview data...
+            </div>
+        );
+    }
+
+    const d = dashboardStats || { totals: {} };
+    const lowStock = d.lowStockItems || [];
+
+    return (
+        <div>
+            {dashboardStats?.setupCompleted === false && perm.isAdmin && (
+                <SetupWizard onComplete={loadStats} />
+            )}
+
+            <div className="flex justify-between items-center" style={{ marginBottom: 30, flexWrap: 'wrap', gap: 15 }}>
+                <div>
+                    <h1 style={{ fontSize: '28px', margin: '0 0 4px 0', color: '#0f172a' }}>{clubName || 'Business'}</h1>
+                    <div style={{ color: '#64748b', fontSize: '15px' }}>Dashboard</div>
+                    {clubName && !dashboardStats?.adminConfig?.club_name && (
+                        <div style={{ marginTop: '8px', fontSize: '13px', color: '#64748b' }}>
+                            <a href="#/settings" style={{ color: '#6366f1', textDecoration: 'none' }}>Set your club name in Settings → Account</a>
+                        </div>
+                    )}
+                </div>
+                
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <select 
+                        value={dateRange} 
+                        onChange={(e) => setDateRange(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)', background: 'var(--card-bg)' }}
+                    >
+                        <option value="today">Today</option>
+                        <option value="week">Last 7 Days</option>
+                        <option value="month">This Month</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+
+                    {dateRange === 'custom' && (
+                        <>
+                            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />
+                            <span>-</span>
+                            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* Financial KPI Cards */}
+            <div className="card-grid" style={{ padding: 0, marginBottom: 30 }}>
+                <AdminMetricCard icon={TrendingUp} title="Total Revenue" value={formatRupees((d.totals.totalSalesRevenue || 0) * 100)} color="var(--primary-color)" subtitle="Sales revenue" />
+                <AdminMetricCard icon={TrendingUp} title="Total Sales Profit" value={formatRupees((d.totals.totalSalesProfit || 0) * 100)} color="var(--primary-color)" subtitle="Profit from sales" />
+                <AdminMetricCard icon={Zap} title="Total Shake Profit" value={formatRupees((d.totals.totalShakeProfit || 0) * 100)} color="var(--accent-color)" subtitle="From attendance" />
+                <AdminMetricCard icon={Package} title="Stock Value (Cost)" value={formatRupees((d.totals.totalStockVpValue || 0) * 100)} color="#0ea5e9" subtitle="Cost to purchase" />
+                <AdminMetricCard icon={AlertTriangle} title="Low Stock Alerts" value={`${lowStock.length} item(s)`} color={lowStock.length > 0 ? 'var(--alert-color)' : '#6c757d'} subtitle="Action needed" />
+                <AdminMetricCard icon={Users} title="Top Selling Product" value={d.totals.topSeller || 'N/A'} color="#f59e0b" subtitle="By volume" />
+            </div>
+
+            {/* Low stock detail */}
+            {lowStock.length > 0 && (
+                <div className="card" style={{ marginBottom: 30, background: 'var(--alert-bg)', borderColor: 'var(--alert-color)' }}>
+                    <h3 style={{ marginBottom: 15, color: 'var(--alert-color)' }}>Low Stock Products</h3>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        {lowStock.map(s => (
+                            <li key={s.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between' }}>
+                                <span><strong>{s.product_name}</strong></span>
+                                <span style={{ color: 'var(--alert-color)', fontWeight: 'bold' }}>{s.qty} left</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* Monthly Sales Table */}
+            <div className="card" style={{ marginBottom: 30 }}>
+                <h3 style={{ marginBottom: 20 }}>Product Sales</h3>
+                {(d.monthlyProductSales || []).length === 0 ? (
+                    <p style={{ color: 'var(--text-light)' }}>No sales recorded in this period.</p>
+                ) : (
+                    <div className="table-container" style={{ margin: 0 }}>
+                        <table>
+                            <thead><tr><th>Product Name</th><th className="text-right">Total Sold</th></tr></thead>
+                            <tbody>
+                                {(d.monthlyProductSales || []).map((item, idx) => (
+                                    <tr key={item.name} style={{ background: idx === 0 ? '#fdf8e4' : 'transparent' }}>
+                                        <td>
+                                            <strong>{item.name}</strong>
+                                            {idx === 0 && <span style={{ marginLeft: 10, fontSize: 12, background: 'orange', color: 'white', padding: '2px 8px', borderRadius: 12 }}>Top Seller</span>}
+                                        </td>
+                                        <td className="text-right"><strong>{item.qty}</strong></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            <div className="card-grid" style={{ padding: 0, marginBottom: 30, gridTemplateColumns: '1fr 1fr' }}>
+                {/* Customer Profit */}
+                <div className="card">
+                    <h3 style={{ marginBottom: 20 }}>Top Customers by Profit</h3>
+                    {(d.topCustomers || []).length === 0 ? (
+                        <p style={{ color: 'var(--text-light)' }}>No sales profit recorded.</p>
+                    ) : (
+                        <div className="table-container" style={{ margin: 0 }}>
+                            <table>
+                                <thead><tr><th>Customer</th><th className="text-right">Total Profit</th></tr></thead>
+                                <tbody>
+                                    {(d.topCustomers || []).map((item, idx) => (
+                                        <tr key={item.name}>
+                                            <td>
+                                                <strong>{item.name}</strong>
+                                                {idx === 0 && <span style={{ marginLeft: 10, fontSize: 12, background: 'var(--primary-color)', color: 'white', padding: '2px 8px', borderRadius: 12 }}>Top Customer</span>}
+                                            </td>
+                                            <td className="text-right"><strong style={{ color: 'var(--primary-color)' }}>{formatRupees((item.profit || 0) * 100)}</strong></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Shake Profit Table */}
+                <div className="card">
+                    <h3 style={{ marginBottom: 20 }}>Customer Shake Profit</h3>
+                    {(d.shakeProfitDetails || []).length === 0 ? (
+                        <p style={{ color: 'var(--text-light)' }}>No shake profits generated yet.</p>
+                    ) : (
+                        <div className="table-container" style={{ margin: 0 }}>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Customer</th>
+                                        <th className="text-right">Days</th>
+                                        <th className="text-right">Total Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(d.shakeProfitDetails || []).map(item => (
+                                        <tr key={item.name}>
+                                            <td><strong>{item.name}</strong></td>
+                                            <td className="text-right">{item.attendance}</td>
+                                            <td className="text-right"><strong style={{ color: 'var(--accent-color)' }}>{formatRupees((item.totalProfit || 0) * 100)}</strong></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+            
+            <div style={{ marginTop: 40 }}>
+                <LoginActivity />
+            </div>
+        </div>
+    );
+}
+
+export function Dashboard() {
+    return (
+        <ErrorBoundary>
+            <DashboardInner />
+        </ErrorBoundary>
+    );
+}
