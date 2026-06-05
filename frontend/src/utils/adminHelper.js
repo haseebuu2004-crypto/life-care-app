@@ -1,3 +1,4 @@
+"use client";
 export const ADMIN_EMAILS = [
     'haseeb@gmail.com'
 ];

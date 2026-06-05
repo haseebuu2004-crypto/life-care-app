@@ -1,160 +1,161 @@
-const pool = require('../config/db');
-const { getOwnerId } = require('../middleware/authMiddleware');
+const db = require('../db');
+const audit = require('../services/auditLogService');
 
 exports.getStock = async (req, res) => {
     try {
-        const ownerId = getOwnerId(req);
-        const { rows } = await pool.query(`
-            SELECT pv.id as id, pv.flavor, pv.vp, pv.sp, COALESCE(s.qty, 0) as qty, p.name as product_name 
-            FROM product_variants pv 
-            JOIN products p ON pv.product_id = p.id 
-            LEFT JOIN stock s ON s.variant_id = pv.id 
-            WHERE pv.is_active = 1 AND p.is_active = 1 AND p.owner_id = $1
-            ORDER BY pv.id ASC
+        const ownerId = req.user.owner_id || req.user.id;
+        
+        // Fetch active product versions and their current stock
+        const result = await db.query(`
+            SELECT 
+                s.id as stock_id,
+                pv.id as version_id,
+                p.id as product_id,
+                p.name as product_name,
+                f.id as flavour_id,
+                f.name as flavor,
+                pv.vendor_price,
+                pv.volume_points,
+                COALESCE(s.quantity, 0) as qty
+            FROM product_versions pv
+            JOIN products p ON pv.product_id = p.id
+            LEFT JOIN flavours f ON f.product_id = p.id AND f.is_active = true
+            INNER JOIN stock s ON s.product_version_id = pv.id AND s.owner_id = $1
+            WHERE p.owner_id = $1 AND pv.is_active = true
+            ORDER BY p.name ASC
         `, [ownerId]);
-        res.json({ success: true, data: rows });
+        
+        const data = result.rows.map(row => ({
+            id: `${row.version_id}_${row.flavour_id || 'none'}`, // Map for frontend AddSale dropdowns (unique)
+            version_id: row.version_id,
+            flavour_id: row.flavour_id,
+            stock_id: row.stock_id,
+            product_id: row.product_id,
+            product_name: row.product_name,
+            flavor: row.flavor,
+            vendor_price: row.vendor_price / 100, // Convert to Rupee for frontend
+            vp: row.volume_points, // V.P (Volume Points)
+            qty: row.qty
+        }));
+        
+        res.json({ success: true, data });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Get Stock Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.addStock = async (req, res) => {
-    console.log('Stock Request Body:', req.body);
     try {
-        const productName = req.body.productName || req.body.name; 
-        const hasFlavours = req.body.hasFlavours;
-        const flavour = req.body.flavour || '';
-        const price = Number(req.body.price) || 0;
-        const volumePoint = Number(req.body.volumePoint) || 0;
-        const quantity = Number(req.body.quantity) || 0;
-
-        if (!productName || productName.trim() === '') {
-            return res.status(400).json({ success: false, message: "Product name is required" });
+        const ownerId = req.user.owner_id || req.user.id;
+        // variantId is product_version_id
+        const { variantId, quantity } = req.body; 
+        
+        if (!variantId || !quantity || quantity <= 0) {
+            return res.status(400).json({ success: false, message: "Valid version ID and quantity > 0 required" });
         }
 
-        const normName = productName.trim();
-        const normNameLower = normName.toLowerCase();
-        const finalFlavor = (hasFlavours && flavour.trim() !== '') ? flavour.trim() : 'Base';
-        const finalFlavorLower = finalFlavor.toLowerCase();
-        const ownerId = getOwnerId(req);
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        const { rows: products } = await pool.query('SELECT id, name FROM products WHERE LOWER(TRIM(name)) = $1 AND owner_id = $2', [normNameLower, ownerId]);
-        let productId;
-        
-        if (products.length > 0) {
-            productId = products[0].id;
-        } else {
-            try {
-                const insertProductRes = await pool.query('INSERT INTO products (name, owner_id) VALUES ($1, $2) RETURNING id', [normName, ownerId]);
-                productId = insertProductRes.rows[0].id;
-            } catch (err) {
-                console.error('SQL Error (INSERT product):', err);
-                if (err.message.includes('unique constraint') || err.message.includes('UNIQUE constraint')) {
-                    return res.status(400).json({ success: false, message: `Product "${normName}" already exists.` });
-                }
-                return res.status(500).json({ success: false, message: 'Database error creating product: ' + err.message });
-            }
-        }
+            // Check if version belongs to owner and is active
+            const pvRes = await client.query(`
+                SELECT pv.id, pv.vendor_price 
+                FROM product_versions pv
+                JOIN products p ON pv.product_id = p.id
+                WHERE pv.id = $1 AND p.owner_id = $2 AND pv.is_active = true
+            `, [variantId, ownerId]);
 
-        const { rows: variants } = await pool.query('SELECT id FROM product_variants WHERE product_id = $1 AND LOWER(TRIM(flavor)) = $2 AND owner_id = $3', [productId, finalFlavorLower, ownerId]);
-        
-        if (variants.length > 0) {
-            const pvId = variants[0].id;
-            try {
-                // Product already exists, so we just increment the stock quantity
-                await pool.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [quantity, pvId, ownerId]);
-                // Optionally update the prices/VP to the newest entered values
-                await pool.query('UPDATE product_variants SET vp = $1, sp = $2 WHERE id = $3 AND owner_id = $4', [volumePoint, price, pvId, ownerId]);
-                
-                return res.status(200).json({ success: true, data: { id: pvId, message: "Stock quantity updated for existing product" } });
-            } catch (updateErr) {
-                console.error('SQL Error (UPDATE stock):', updateErr);
-                return res.status(500).json({ success: false, message: 'Database error updating stock: ' + updateErr.message });
+            if (pvRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(404).json({ success: false, message: "Product version not found or inactive" });
             }
-        } else {
-            try {
-                const insertVariantRes = await pool.query(
-                    'INSERT INTO product_variants (product_id, flavor, vp, sp, owner_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-                    [productId, finalFlavor, volumePoint, price, ownerId]
-                );
-                const pvId = insertVariantRes.rows[0].id;
-                
-                await pool.query('INSERT INTO stock (variant_id, qty, owner_id) VALUES ($1, $2, $3)', [pvId, quantity, ownerId]);
-                
-                res.status(200).json({ success: true, data: { id: pvId, message: "Stock added" } });
-            } catch (err) {
-                console.error('SQL Error (INSERT variant/stock):', err.stack || err);
-                return res.status(500).json({ success: false, message: 'Database error creating variant/stock: ' + err.message });
+
+            const vendorPriceSnap = pvRes.rows[0].vendor_price;
+
+            // Try to update existing stock row
+            const updateRes = await client.query(`
+                UPDATE stock SET quantity = quantity + $1, vendor_price_snap = $2 
+                WHERE product_version_id = $3 AND owner_id = $4 RETURNING id
+            `, [quantity, vendorPriceSnap, variantId, ownerId]);
+
+            if (updateRes.rows.length === 0) {
+                // No existing row, insert new
+                await client.query(`
+                    INSERT INTO stock (product_version_id, owner_id, quantity, vendor_price_snap, added_by)
+                    VALUES ($1, $2, $3, $4, $5)
+                `, [variantId, ownerId, quantity, vendorPriceSnap, req.user.id]);
             }
+
+            await client.query('COMMIT');
+            client.release();
+            
+            await audit.logAction(req.user.id, 'STOCK_ADD', 'stock', null, null, { product_version_id: variantId, quantity_added: quantity });
+
+            res.json({ success: true, message: "Stock added successfully" });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Add Stock Error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
         }
     } catch (error) {
-        console.error('Stock Add Error Stack:', error.stack || error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-exports.increaseStock = async (req, res) => {
-    try {
-        const { qty_add } = req.body;
-        const ownerId = getOwnerId(req);
-        if (!qty_add || qty_add <= 0) return res.status(400).json({ success: false, message: "Valid quantity required" });
-
-        await pool.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [qty_add, req.params.id, ownerId]);
-        res.json({ success: true, data: { message: "Stock increased" } });
-    } catch (error) {
-        console.error("Stock Increase Error:", error.stack || error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Add Stock Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.updateStockQuantity = async (req, res) => {
     try {
+        const ownerId = req.user.owner_id || req.user.id;
+        const { id } = req.params; // stock_id
         const { quantity } = req.body;
-        const ownerId = getOwnerId(req);
-        if (quantity === undefined || quantity < 0) return res.status(400).json({ success: false, message: "Valid quantity required" });
+        
+        if (quantity === undefined || quantity < 0) {
+            return res.status(400).json({ success: false, message: "Valid quantity >= 0 required" });
+        }
 
-        await pool.query('UPDATE stock SET qty = $1 WHERE variant_id = $2 AND owner_id = $3', [quantity, req.params.id, ownerId]);
-        res.json({ success: true, data: { message: "Stock quantity updated" } });
+        const result = await db.query(`UPDATE stock SET quantity = $1 WHERE id = $2 AND owner_id = $3 RETURNING id`, [quantity, id, ownerId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: "Stock not found" });
+        }
+        
+        await audit.logAction(req.user.id, 'STOCK_UPDATE', 'stock', id, null, { new_quantity: quantity });
+        
+        res.json({ success: true, message: "Stock updated successfully." });
     } catch (error) {
-        console.error("Stock Update Error:", error.stack || error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Update Stock Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.updateStockPrice = async (req, res) => {
-    try {
-        const { price } = req.body;
-        const ownerId = getOwnerId(req);
-        if (price === undefined || price < 0) return res.status(400).json({ success: false, message: "Valid price required" });
+    res.status(400).json({ success: false, message: "Use product settings to update prices." });
+};
 
-        await pool.query('UPDATE product_variants SET sp = $1 WHERE id = $2 AND owner_id = $3', [price, req.params.id, ownerId]);
-        res.json({ success: true, data: { message: "Stock price updated" } });
-    } catch (error) {
-        console.error("Stock Price Update Error:", error.stack || error);
-        res.status(500).json({ success: false, message: error.message });
-    }
+exports.increaseStock = async (req, res) => {
+    res.status(400).json({ success: false, message: "Use the add stock endpoint." });
+};
+
+exports.decreaseStock = async (req, res) => {
+    res.status(400).json({ success: false, message: "Direct decrease disabled. Use sales or product manager." });
 };
 
 exports.deleteStock = async (req, res) => {
     try {
-        const ownerId = getOwnerId(req);
-        // Soft delete variant so sales history is kept
-        const { rows } = await pool.query(
-            'SELECT COUNT(*) as count FROM sale_items WHERE variant_id = $1 AND owner_id = $2', 
-            [req.params.id, ownerId]
-        );
-        const count = parseInt(rows[0]?.count || 0);
+        const ownerId = req.user.owner_id || req.user.id;
+        const { id } = req.params; // This is the stock_id
 
-        if (count > 0) {
-            await pool.query('UPDATE product_variants SET is_active = 0 WHERE id = $1 AND owner_id = $2', [req.params.id, ownerId]);
-            await pool.query('DELETE FROM stock WHERE variant_id = $1 AND owner_id = $2', [req.params.id, ownerId]);
-            res.json({ success: true, data: null, message: "Stock hidden from inventory but kept in sales history." });
-        } else {
-            await pool.query('DELETE FROM product_variants WHERE id = $1 AND owner_id = $2', [req.params.id, ownerId]);
-            res.json({ success: true, data: null, message: "Stock deleted permanently." });
-        }
+        // Actually delete the stock row so it stops appearing in Stock Overview
+        await db.query(`DELETE FROM stock WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
+        
+        await audit.logAction(req.user.id, 'STOCK_DELETE', 'stock', id);
+        
+        res.json({ success: true, message: "Stock deleted." });
     } catch (error) {
-        console.error("Stock Delete Error:", error.stack || error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Delete Stock Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };

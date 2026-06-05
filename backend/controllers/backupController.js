@@ -9,6 +9,9 @@ exports.generateBackup = async (req, res) => {
         const { type, format, uploadToCloud } = req.body;
         const ownerId = getOwnerId(req);
         
+        const adminConfigRes = await pool.query('SELECT club_name FROM admin_config WHERE owner_id = $1', [ownerId]);
+        const clubName = adminConfigRes.rows[0]?.club_name || '';
+        
         if (!['customers', 'sales', 'attendance', 'products', 'full'].includes(type)) {
             return res.status(400).json({ success: false, message: 'Invalid backup type' });
         }
@@ -23,13 +26,13 @@ exports.generateBackup = async (req, res) => {
             : 'text/csv';
 
         if (format === 'xlsx') {
-            buffer = await backupService.generateExcel(data, type);
+            buffer = await backupService.generateExcel(data, type, ownerId);
         } else {
-            const csvStr = await backupService.generateCSV(data, type);
+            const csvStr = await backupService.generateCSV(data, type, ownerId);
             buffer = Buffer.from(csvStr, 'utf-8');
         }
 
-        const fileName = backupService.generateFileName(type, format);
+        const fileName = backupService.generateFileName(type, format, clubName);
 
         if (uploadToCloud) {
             if (!cloudStorageService.isConfigured()) {
@@ -75,8 +78,9 @@ exports.validateRestore = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
         
+        const ownerId = getOwnerId(req);
         const parsed = await restoreService.parseFile(req.file.buffer, req.file.mimetype, req.file.originalname);
-        const validation = await restoreService.validateRestore(parsed.data, parsed.type);
+        const validation = await restoreService.validateRestore(parsed, ownerId);
         
         res.json({ 
             success: true, 
@@ -99,8 +103,25 @@ exports.confirmRestore = async (req, res) => {
         const { strategy } = req.body; // 'merge' or 'wipe'
         const ownerId = getOwnerId(req);
 
+        // Daily limit check
+        const countRes = await pool.query(`
+            SELECT COUNT(*) FROM backup_logs 
+            WHERE owner_id = $1 
+            AND restore_status = 'Restored' 
+            AND DATE(restore_at) = CURRENT_DATE
+        `, [ownerId]);
+        
+        if (parseInt(countRes.rows[0].count) >= 3) {
+            return res.status(429).json({ success: false, message: "Daily restoration limit reached (maximum 3 restores per day)." });
+        }
+
         const parsed = await restoreService.parseFile(req.file.buffer, req.file.mimetype, req.file.originalname);
-        const result = await restoreService.executeRestore(ownerId, parsed.type, parsed.data, strategy);
+        const validation = await restoreService.validateRestore(parsed, ownerId);
+        if (!validation.valid) {
+            return res.status(400).json({ success: false, message: validation.message });
+        }
+
+        const result = await restoreService.executeRestore(ownerId, parsed.type, parsed, strategy);
         
         // Log restore success
         await pool.query(`
@@ -108,6 +129,10 @@ exports.confirmRestore = async (req, res) => {
             (owner_id, backup_type, file_name, storage_provider, status, created_by, restore_status, restore_at, notes)
             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
         `, [ownerId, parsed.type, req.file.originalname, 'Upload', 'Success', req.user?.username || 'Admin', 'Restored', `Restore Strategy: ${strategy}`]);
+
+        // Invalidate dashboard cache so stock/sales reflect the restore immediately
+        const cache = require('../services/cacheService');
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 
         res.json({ success: true, data: result });
     } catch (error) {

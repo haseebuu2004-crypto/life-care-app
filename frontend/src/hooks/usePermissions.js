@@ -1,3 +1,4 @@
+"use client";
 /**
  * Frontend RBAC — single source of truth for permission checks.
  * Import this anywhere you need role-based visibility.

@@ -4,20 +4,19 @@ const runMigrations = require('../migrations/index');
 
 const pool = new Pool({
     connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Supabase usually
+    ssl: { rejectUnauthorized: false }, // Required for Supabase usually
+    max: 12 // Restrict max clients to avoid Supabase 15 connection limit
 });
 
 pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
-    process.exit(-1);
+    // Removed process.exit(-1) because the pool will automatically reconnect/recover
 });
 
 async function initDB() {
     try {
-        await createTables();
         console.log('Connected to the PostgreSQL database.');
-        await runMigrations(pool);
-        console.log('Database migrations verified successfully.');
+        console.log('Database migrations are now managed by Prisma.');
     } catch (err) {
         console.error('Failed to initialize database on startup:', err);
     }

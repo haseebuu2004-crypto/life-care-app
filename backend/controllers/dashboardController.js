@@ -1,413 +1,545 @@
-const pool = require('../config/db');
-const { getOwnerId } = require('../middleware/authMiddleware');
+const db = require('../db');
+const audit = require('../services/auditLogService');
+const cache = require('../services/cacheService');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+    port: process.env.SMTP_PORT || 587,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+    }
+});
+
+const otpCache = new Map();
 
 exports.getStats = async (req, res) => {
     try {
+        const ownerId = req.user.owner_id || req.user.id;
+        
+        let { startDate, endDate } = req.query;
+        
+        const now = new Date();
+        if (!startDate) {
+            // Default to current calendar month
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        }
+        if (!endDate) {
+            endDate = now.toISOString().split('T')[0];
+        }
+
+        const cacheKey = `dashboard_stats:${ownerId}:${startDate}:${endDate}`;
+        const cachedData = await cache.getCache(cacheKey);
+        
+        if (cachedData) {
+            return res.json({ success: true, data: cachedData, cached: true });
+        }
+
         const stats = {
             totals: {
                 totalSalesProfit: 0,
+                totalSalesRevenue: 0,
                 totalShakeProfit: 0,
-                totalVpSold: 0,
-                totalStockValue: 0,
+                totalStockVpValue: 0,
+                totalStockSellValue: 0,
                 lowStockCount: 0,
                 topSeller: 'N/A'
             },
             lowStockItems: [],
             monthlyProductSales: [],
             topCustomers: [],
-            shakeProfitDetails: []
+            shakeProfitDetails: [],
+            adminConfig: {}
         };
 
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        const ownerId = getOwnerId(req);
+        // Fetch config
+        const confRes = await db.query(`SELECT low_stock_threshold, setup_completed, default_shake_amount FROM admin_config WHERE owner_id = $1`, [ownerId]);
+        const lowStockThresh = confRes.rows[0]?.low_stock_threshold || 10;
+        stats.setupCompleted = confRes.rows[0]?.setup_completed || false;
+        stats.adminConfig = {
+            default_shake_amount: parseInt(confRes.rows[0]?.default_shake_amount || 0) / 100,
+            low_stock_threshold: parseInt(lowStockThresh)
+        };
 
-        // Combine scalar queries into a single query to reduce connection overhead
+        // Combine scalar queries
         const scalarQuery = `
             SELECT 
-                (SELECT SUM(total_profit) FROM sales WHERE owner_id = $1) as "totalProfit",
-                (SELECT SUM(pv.vp * si.qty) FROM sale_items si JOIN product_variants pv ON si.variant_id = pv.id WHERE si.owner_id = $1) as "totalVp",
-                (SELECT SUM(pv.sp * s.qty) FROM stock s JOIN product_variants pv ON s.variant_id = pv.id WHERE s.owner_id = $1) as "stockValue",
-                (SELECT COUNT(CASE WHEN s.qty < 5 THEN 1 END) FROM stock s JOIN product_variants pv ON s.variant_id = pv.id WHERE s.owner_id = $1) as "lowStock"
+                (SELECT COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $3 AND s.sale_date <= $4 AND s.is_deleted = false) as "totalSalesProfit",
+                (SELECT COALESCE(SUM(si.price_charged * si.quantity), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $3 AND s.sale_date <= $4 AND s.is_deleted = false) as "totalSalesRevenue",
+                (SELECT COALESCE(SUM(s.quantity * s.vendor_price_snap), 0) FROM stock s JOIN product_versions pv ON s.product_version_id = pv.id WHERE s.owner_id = $1 AND pv.is_active = true) as "totalStockVpValue",
+                (SELECT COALESCE(SUM(shake_amount), 0) FROM attendance WHERE owner_id = $1 AND attendance_date >= $3 AND attendance_date <= $4 AND is_deleted = false) as "totalShakeProfit",
+                (SELECT COUNT(*) FROM stock s JOIN product_versions pv ON s.product_version_id = pv.id WHERE s.owner_id = $1 AND s.quantity <= $2 AND pv.is_active = true) as "lowStock"
         `;
 
         const [scalarRes, res4, res5, res6, res7] = await Promise.all([
-            pool.query(scalarQuery, [ownerId]),
-            pool.query(`
-                SELECT s.id, p.name as product_name, pv.flavor, s.qty
+            db.query(scalarQuery, [ownerId, lowStockThresh, startDate, endDate]),
+            db.query(`
+                SELECT s.id, p.name as product_name, s.quantity as qty
                 FROM stock s
-                JOIN product_variants pv ON s.variant_id = pv.id
+                JOIN product_versions pv ON s.product_version_id = pv.id
                 JOIN products p ON pv.product_id = p.id
-                WHERE s.qty < 5 AND s.owner_id = $1
-                ORDER BY s.qty ASC
-            `, [ownerId]),
-            pool.query(`
-                SELECT p.name, SUM(si.qty) as qty
+                WHERE s.quantity <= $2 AND s.owner_id = $1 AND pv.is_active = true
+                ORDER BY s.quantity ASC
+            `, [ownerId, lowStockThresh]),
+            db.query(`
+                SELECT p.name, SUM(si.quantity) as qty
                 FROM sale_items si
                 JOIN sales s ON si.sale_id = s.id
-                JOIN product_variants pv ON si.variant_id = pv.id
+                JOIN product_versions pv ON si.product_version_id = pv.id
                 JOIN products p ON pv.product_id = p.id
-                WHERE s.date >= $1 AND s.owner_id = $2
+                WHERE s.sale_date >= $1 AND s.sale_date <= $3 AND s.owner_id = $2 AND s.is_deleted = false
                 GROUP BY p.name
                 ORDER BY qty DESC
-            `, [firstDay, ownerId]),
-            pool.query(`
-                SELECT customer as name, SUM(total_profit) as profit
-                FROM sales
-                WHERE owner_id = $1
-                GROUP BY customer
+            `, [startDate, ownerId, endDate]),
+            db.query(`
+                SELECT c.name, COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) as profit
+                FROM sale_items si
+                JOIN sales s ON si.sale_id = s.id
+                JOIN customers c ON s.customer_id = c.id
+                WHERE s.owner_id = $1 AND s.sale_date >= $2 AND s.sale_date <= $3 AND s.is_deleted = false
+                GROUP BY c.name
                 ORDER BY profit DESC
                 LIMIT 10
-            `, [ownerId]),
-            pool.query(`
-                SELECT name, COUNT(*) as attendance, AVG(shake_profit) as "profitPerDay", SUM(shake_profit) as "totalProfit"
-                FROM attendance
-                WHERE status = 'Present' AND owner_id = $1
-                GROUP BY name
+            `, [ownerId, startDate, endDate]),
+            db.query(`
+                SELECT c.name, COUNT(*) as attendance, AVG(a.shake_amount) as "profitPerDay", SUM(a.shake_amount) as "totalProfit"
+                FROM attendance a
+                JOIN customers c ON a.customer_id = c.id
+                WHERE a.owner_id = $1 AND a.attendance_date >= $2 AND a.attendance_date <= $3 AND a.is_deleted = false
+                GROUP BY c.name
                 ORDER BY "totalProfit" DESC
-            `, [ownerId])
+            `, [ownerId, startDate, endDate])
         ]);
 
-        stats.totals.totalSalesProfit = scalarRes.rows[0]?.totalProfit || 0;
-        stats.totals.totalVpSold = scalarRes.rows[0]?.totalVp || 0;
-        stats.totals.totalStockValue = scalarRes.rows[0]?.stockValue || 0;
+        stats.totals.totalSalesProfit = (scalarRes.rows[0]?.totalSalesProfit || 0) / 100;
+        stats.totals.totalSalesRevenue = (scalarRes.rows[0]?.totalSalesRevenue || 0) / 100;
+        stats.totals.totalStockVpValue = (scalarRes.rows[0]?.totalStockVpValue || 0) / 100;
+        stats.totals.totalShakeProfit = (scalarRes.rows[0]?.totalShakeProfit || 0) / 100;
         stats.totals.lowStockCount = parseInt(scalarRes.rows[0]?.lowStock || 0);
 
-        stats.lowStockItems = res4.rows || [];
+        stats.lowStockItems = (res4.rows || []).map(r => ({ name: r.product_name, qty: parseInt(r.qty) }));
 
         stats.monthlyProductSales = res5.rows || [];
         if (stats.monthlyProductSales.length > 0) stats.totals.topSeller = stats.monthlyProductSales[0].name;
 
-        stats.topCustomers = res6.rows || [];
+        // Convert PAISE to Rupee for customers and attendance
+        stats.topCustomers = (res6.rows || []).map(r => ({ name: r.name, profit: r.profit / 100 }));
 
-        stats.shakeProfitDetails = res7.rows || [];
-        stats.totals.totalShakeProfit = (stats.shakeProfitDetails).reduce((acc, curr) => acc + (parseFloat(curr.totalProfit) || 0), 0);
+        stats.shakeProfitDetails = (res7.rows || []).map(r => ({
+            name: r.name,
+            attendance: r.attendance,
+            profitPerDay: r.profitPerDay / 100,
+            totalProfit: r.totalProfit / 100
+        }));
 
+        await cache.setCache(cacheKey, stats, 300); // 5 minutes TTL
         res.json({ success: true, data: stats });
-
     } catch (error) {
         console.error("Dashboard Stats Error:", error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.resetData = async (req, res) => {
     try {
-        const ownerId = getOwnerId(req);
-        const { password } = req.body;
+        const ownerId = req.user.owner_id || req.user.id;
         
-        // Fetch the Workspace's dedicated Admin password
-        const { rows } = await pool.query("SELECT password FROM users WHERE username = 'admin' AND owner_id = $1", [ownerId]);
-        if (rows.length === 0 || !rows[0].password) {
-            return res.status(404).json({ success: false, message: "Workspace Admin account not found." });
-        }
-        
-        const isMatch = await bcrypt.compare(password, rows[0].password);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: "Invalid Admin Password. Factory reset aborted." });
-        }
-
-        const client = await pool.connect();
+        const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
             
-            // Delete top-level entities. Cascading will automatically handle stock, sale_items, product_variants.
-            // We delete all entities associated with this owner.
-            await client.query('DELETE FROM sale_items WHERE owner_id = $1', [ownerId]);
-            await client.query('DELETE FROM sales WHERE owner_id = $1', [ownerId]);
-            await client.query('DELETE FROM stock WHERE owner_id = $1', [ownerId]);
-            await client.query('DELETE FROM product_variants WHERE owner_id = $1', [ownerId]);
-            await client.query('DELETE FROM products WHERE owner_id = $1', [ownerId]);
-            await client.query('DELETE FROM attendance WHERE owner_id = $1', [ownerId]);
+            // Fetch all active sales to restore stock atomically
+            const activeSalesRes = await client.query(`SELECT id FROM sales WHERE owner_id = $1 AND is_deleted = false`, [ownerId]);
+            for (const row of activeSalesRes.rows) {
+                await client.query(`SELECT delete_sale_restore_stock($1, $2, $3)`, [row.id, req.user.id, ownerId]);
+            }
+            
+            // Soft delete attendance
+            await client.query(`UPDATE attendance SET is_deleted = true, deleted_at = NOW() WHERE owner_id = $1`, [ownerId]);
             
             await client.query('COMMIT');
-            res.json({ success: true, message: "All data has been permanently deleted." });
-        } catch (dbError) {
-            await client.query('ROLLBACK');
-            console.error("Reset Data DB Error:", dbError);
-            res.status(500).json({ success: false, message: "Database Error: " + dbError.message });
-        } finally {
             client.release();
+
+            await audit.logAction(req.user.id, 'DATA_RESET', null, null);
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            
+            res.json({ success: true, message: "Sales and Attendance data reset successfully (Stock restored)" });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Reset Error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
         }
     } catch (error) {
-        console.error("Reset Data Server Error:", error);
-        res.status(500).json({ success: false, message: "Server Error: " + error.message });
+        console.error("Reset Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
-exports.exportReport = async (req, res) => {
-    const type = req.query.type;
-    const ownerId = getOwnerId(req);
-    if (!['sales', 'attendance', 'summary'].includes(type)) {
-        return res.status(400).json({ success: false, message: 'Invalid report type' });
-    }
-
+exports.deleteAccount = async (req, res) => {
     try {
-        const PDFDocument = require('pdfkit');
-        const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
-        
-        let filename = `${type}_report_${new Date().toISOString().split('T')[0]}.pdf`;
-        res.setHeader('Content-disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-type', 'application/pdf');
-
-        doc.pipe(res);
-
-        const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-
-        // Professional Header
-        doc.fontSize(24).font('Helvetica-Bold').fillColor('#222222').text('Life Care', { align: 'center' });
-        doc.fontSize(14).font('Helvetica').fillColor('#555555').text(`${type.charAt(0).toUpperCase() + type.slice(1)} Report`, { align: 'center' });
-        doc.moveDown(2);
-
-        // Fetch data
-        const getSales = async () => {
-            const { rows } = await pool.query(`SELECT s.date, s.customer, p.name as product, pv.flavor, si.qty, (pv.sp * si.qty) as amount, si.profit 
-                    FROM sale_items si 
-                    JOIN sales s ON si.sale_id = s.id 
-                    LEFT JOIN product_variants pv ON si.variant_id = pv.id 
-                    LEFT JOIN products p ON pv.product_id = p.id
-                    WHERE s.owner_id = $1
-                    ORDER BY s.date DESC`, [ownerId]);
-            return rows;
-        };
-
-        const getAttendance = async () => {
-            const { rows } = await pool.query(`SELECT date, name, status, shake_profit FROM attendance WHERE owner_id = $1 ORDER BY date DESC`, [ownerId]);
-            return rows;
-        };
-
-        let sales = [];
-        let attendance = [];
-
-        if (type === 'sales' || type === 'summary') sales = await getSales();
-        if (type === 'attendance' || type === 'summary') attendance = await getAttendance();
-
-        // Group by Date
-        const grouped = {};
-        
-        sales.forEach(s => {
-            // Postgres TIMESTAMP might return Date objects, so we need to format to YYYY-MM-DD
-            const dateStr = s.date instanceof Date ? s.date.toISOString().split('T')[0] : String(s.date).split('T')[0];
-            if (!grouped[dateStr]) grouped[dateStr] = { sales: [], attendance: [] };
-            grouped[dateStr].sales.push(s);
-        });
-
-        attendance.forEach(a => {
-            const dateStr = a.date instanceof Date ? a.date.toISOString().split('T')[0] : String(a.date).split('T')[0];
-            if (!grouped[dateStr]) grouped[dateStr] = { sales: [], attendance: [] };
-            grouped[dateStr].attendance.push(a);
-        });
-
-        const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-
-        const drawTable = (title, headers, rowsData, colWidths) => {
-            if (doc.y > doc.page.height - 100 && doc.y > doc.page.margins.top + 50) doc.addPage();
-            
-            doc.moveDown(0.5);
-            doc.font('Helvetica-Bold').fontSize(12).fillColor('#333333').text(title, doc.page.margins.left);
-            doc.moveDown(0.5);
-
-            // Draw Headers
-            let currentX = doc.page.margins.left;
-            doc.rect(currentX, doc.y, contentWidth, 22).fillAndStroke('#f8f9fa', '#e9ecef');
-            
-            doc.fillColor('#495057').font('Helvetica-Bold').fontSize(10);
-            const headerY = doc.y + 6;
-            
-            headers.forEach((h, i) => {
-                doc.text(h, currentX + 8, headerY, { width: colWidths[i] - 16, align: (i === headers.length - 1 || h === 'Amount' || h === 'Qty') ? 'right' : 'left' });
-                currentX += colWidths[i];
-            });
-            
-            doc.y += 22; // move past header
-
-            // Draw Rows
-            doc.font('Helvetica').fontSize(10).fillColor('#212529');
-            rowsData.forEach((row, rowIndex) => {
-                if (doc.y > doc.page.height - doc.page.margins.bottom - 20) {
-                    doc.addPage();
-                    doc.y = doc.page.margins.top;
-                }
-                
-                const startY = doc.y;
-                currentX = doc.page.margins.left;
-                
-                row.forEach((cell, i) => {
-                    doc.text(String(cell), currentX + 8, startY + 6, { 
-                        width: colWidths[i] - 16, 
-                        align: (i === row.length - 1 || headers[i] === 'Amount' || headers[i] === 'Qty') ? 'right' : 'left' 
-                    });
-                    currentX += colWidths[i];
-                });
-                
-                doc.y = startY + 22;
-                
-                doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.margins.left + contentWidth, doc.y).lineWidth(0.5).stroke('#f1f3f5');
-            });
-            doc.moveDown(0.5);
-        };
-
-        if (dates.length === 0) {
-            doc.font('Helvetica').fontSize(12).fillColor('#666666').text('No data available for this report.', { align: 'center' });
+        if (req.user.id !== (req.user.owner_id || req.user.id)) {
+            return res.status(403).json({ success: false, message: "Only the primary account holder can delete the account." });
         }
-
-        dates.forEach((date, idx) => {
-            if (doc.y > doc.page.height - 180 && doc.y > doc.page.margins.top + 50) {
-                doc.addPage();
-            } else if (idx > 0) {
-                doc.moveDown(1.5);
-            }
-
-            const dateStr = date.split('-').reverse().join('/');
-            doc.rect(doc.page.margins.left, doc.y, contentWidth, 28).fill('#f1f3f5');
-            doc.font('Helvetica-Bold').fontSize(12).fillColor('#212529').text(`DATE: ${dateStr}`, doc.page.margins.left + 12, doc.y + 8);
-            doc.y += 28;
-            doc.moveDown(0.5);
-
-            const data = grouped[date];
-
-            let dailyAttendanceCount = 0;
-            let dailySalesAmount = 0;
-            let dailyProfit = 0;
-
-            if (data.attendance.length > 0) {
-                const attHeaders = ['Name', 'Status', 'Profit'];
-                const attWidths = [contentWidth * 0.5, contentWidth * 0.3, contentWidth * 0.2];
-                const attRows = data.attendance.map(a => {
-                    if (a.status === 'Present') dailyAttendanceCount++;
-                    dailyProfit += (parseFloat(a.shake_profit) || 0);
-                    return [a.name, a.status, `Rs. ${a.shake_profit || 0}`];
-                });
-                drawTable('Attendance', attHeaders, attRows, attWidths);
-            }
-
-            if (data.sales.length > 0) {
-                const saleHeaders = ['Customer', 'Product', 'Qty', 'Amount', 'Profit'];
-                const saleWidths = [contentWidth * 0.28, contentWidth * 0.35, contentWidth * 0.1, contentWidth * 0.13, contentWidth * 0.14];
-                const saleRows = data.sales.map(s => {
-                    dailySalesAmount += (parseFloat(s.amount) || 0);
-                    dailyProfit += (parseFloat(s.profit) || 0);
-                    return [
-                        s.customer, 
-                        `${s.product || 'N/A'} ${s.flavor ? '('+s.flavor+')' : ''}`, 
-                        s.qty, 
-                        `Rs. ${s.amount || 0}`,
-                        `Rs. ${s.profit || 0}`
-                    ];
-                });
-                drawTable('Sales', saleHeaders, saleRows, saleWidths);
-            }
-
-            if (doc.y > doc.page.height - 120 && doc.y > doc.page.margins.top + 50) {
-                doc.addPage();
-            }
-            doc.moveDown(0.5);
+        const ownerId = req.user.id;
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(`UPDATE users SET is_active = false WHERE id = $1 OR owner_id = $1`, [ownerId]);
+            await client.query(`UPDATE sessions SET invalidated_at = NOW() WHERE user_id IN (SELECT id FROM users WHERE id = $1 OR owner_id = $1)`, [ownerId]);
+            await client.query('COMMIT');
+            client.release();
             
-            const summaryX = doc.page.margins.left;
-            doc.font('Helvetica-Bold').fontSize(11).fillColor('#212529').text('Daily Summary', summaryX);
-            doc.moveDown(0.3);
-            doc.font('Helvetica').fontSize(10).fillColor('#495057');
+            await audit.logAction(ownerId, 'ACCOUNT_DELETE');
             
-            let summaryY = doc.y;
-            
-            if (type === 'attendance' || type === 'summary') {
-                doc.text(`Total Attendance:`, summaryX, summaryY);
-                doc.font('Helvetica-Bold').text(`${dailyAttendanceCount}`, summaryX + 100, summaryY);
-                summaryY += 15;
-            }
-            if (type === 'sales' || type === 'summary') {
-                doc.font('Helvetica').text(`Total Sales:`, summaryX, summaryY);
-                doc.font('Helvetica-Bold').text(`Rs. ${dailySalesAmount}`, summaryX + 100, summaryY);
-                summaryY += 15;
-            }
-            
-            doc.font('Helvetica').text(`Total Profit:`, summaryX, summaryY);
-            doc.font('Helvetica-Bold').fillColor('#228be6').text(`Rs. ${dailyProfit}`, summaryX + 100, summaryY);
-            
-            doc.y = summaryY + 20;
-        });
-
-        let pages = doc.bufferedPageRange ? doc.bufferedPageRange().count : 1;
-        
-        const generatedDate = new Date();
-        const fDate = generatedDate.toLocaleDateString('en-GB');
-        const fTime = generatedDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-        for (let i = 0; i < pages; i++) {
-            if (doc.switchToPage) doc.switchToPage(i);
-            doc.moveTo(doc.page.margins.left, doc.page.height - 50).lineTo(doc.page.width - doc.page.margins.right, doc.page.height - 50).lineWidth(0.5).stroke('#dee2e6');
-            doc.fontSize(8).fillColor('#868e96').text('Generated by Nutrition Club Manager', doc.page.margins.left, doc.page.height - 40, { align: 'left' });
-            doc.text(`Generated on: ${fDate} ${fTime}`, doc.page.margins.left, doc.page.height - 40, { align: 'right' });
+            res.clearCookie('session_token');
+            res.json({ success: true, message: "Account deleted." });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Delete Account Error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
         }
-        
-        doc.end();
     } catch (error) {
-        console.error("Export Error:", error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Delete Account Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.completeSetup = async (req, res) => {
+    try {
+        const ownerId = req.user.owner_id || req.user.id;
+        await db.query(`UPDATE admin_config SET setup_completed = true WHERE owner_id = $1`, [ownerId]);
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        res.json({ success: true, message: "Setup wizard completed" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.updateAdminConfig = async (req, res) => {
+    try {
+        const ownerId = req.user.owner_id || req.user.id;
+        const { default_shake_amount, low_stock_threshold } = req.body;
+        
+        let updates = [];
+        let values = [];
+        let i = 1;
+
+        if (default_shake_amount !== undefined) {
+            updates.push(`default_shake_amount = $${i++}`);
+            values.push(default_shake_amount * 100);
+        }
+        if (low_stock_threshold !== undefined) {
+            updates.push(`low_stock_threshold = $${i++}`);
+            values.push(low_stock_threshold);
+        }
+
+        if (updates.length > 0) {
+            values.push(ownerId);
+            await db.query(`UPDATE admin_config SET ${updates.join(', ')} WHERE owner_id = $${i}`, values);
+        }
+        
+        res.json({ success: true, message: "Config updated successfully" });
+    } catch (error) {
+        console.error("Config Update Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.clearAttendanceData = async (req, res) => {
-    const { month } = req.body;
-    const ownerId = getOwnerId(req);
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        const ownerId = req.user.owner_id || req.user.id;
+        const { month } = req.body; // format 'YYYY-MM' or null
         
-        let query = 'DELETE FROM attendance WHERE owner_id = $1';
-        let params = [ownerId];
-        
-        if (month) {
-            query += " AND TO_CHAR(date, 'YYYY-MM') = $2";
-            params.push(month);
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            let query = `UPDATE attendance SET is_deleted = true, deleted_at = NOW() WHERE owner_id = $1 AND is_deleted = false`;
+            const params = [ownerId];
+            
+            if (month) {
+                query += ` AND TO_CHAR(attendance_date, 'YYYY-MM') = $2`;
+                params.push(month);
+            }
+            
+            await client.query(query, params);
+            
+            await client.query('COMMIT');
+            client.release();
+            
+            await audit.logAction(req.user.id, 'CLEAR_ATTENDANCE', null, null, { month });
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            
+            res.json({ 
+                success: true, 
+                message: `Attendance data cleared successfully${month ? ` for ${month}` : ''}.` 
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Clear Attendance Error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
         }
-        
-        await client.query(query, params);
-        await client.query('COMMIT');
-        
-        res.json({ success: true, message: `Attendance data cleared successfully${month ? ` for ${month}` : ''}.` });
     } catch (error) {
-        await client.query('ROLLBACK');
         console.error("Clear Attendance Error:", error);
-        res.status(500).json({ success: false, message: error.message });
-    } finally {
-        client.release();
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
 exports.clearSalesData = async (req, res) => {
-    const { month } = req.body;
-    const ownerId = getOwnerId(req);
-    const client = await pool.connect();
-    
     try {
-        await client.query('BEGIN');
+        const ownerId = req.user.owner_id || req.user.id;
+        const { month } = req.body; // format 'YYYY-MM' or null
         
-        let saleQuery = 'DELETE FROM sales WHERE owner_id = $1';
-        let saleParams = [ownerId];
-        
-        let itemQuery = 'DELETE FROM sale_items WHERE owner_id = $1';
-        let itemParams = [ownerId];
-        
-        if (month) {
-            saleQuery += " AND TO_CHAR(date, 'YYYY-MM') = $2";
-            saleParams.push(month);
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
             
-            itemQuery = "DELETE FROM sale_items WHERE owner_id = $1 AND sale_id IN (SELECT id FROM sales WHERE TO_CHAR(date, 'YYYY-MM') = $2 AND owner_id = $3)";
-            itemParams = [ownerId, month, ownerId];
+            let query = `SELECT id FROM sales WHERE owner_id = $1 AND is_deleted = false`;
+            const params = [ownerId];
+            
+            if (month) {
+                query += ` AND TO_CHAR(sale_date, 'YYYY-MM') = $2`;
+                params.push(month);
+            }
+            
+            const salesRes = await client.query(query, params);
+            
+            for (const row of salesRes.rows) {
+                await client.query(`SELECT delete_sale_restore_stock($1, $2, $3)`, [row.id, req.user.id, ownerId]);
+            }
+            
+            await client.query('COMMIT');
+            client.release();
+            
+            await audit.logAction(req.user.id, 'CLEAR_SALES', null, null, { month });
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            
+            res.json({ 
+                success: true, 
+                message: `Sales data cleared successfully${month ? ` for ${month}` : ''}. Stock has been restored.` 
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Clear Sales Error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
+        }
+    } catch (error) {
+        console.error("Clear Sales Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.requestResetOtp = async (req, res) => {
+    try {
+        const { password } = req.body;
+        
+        if (!password) {
+            return res.status(400).json({ success: false, message: "Password is required" });
         }
         
-        await client.query(itemQuery, itemParams);
-        await client.query(saleQuery, saleParams);
+        const userRes = await db.query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
         
-        await client.query('COMMIT');
-        res.json({ success: true, message: `Sales data cleared successfully${month ? ` for ${month}` : ''}.` });
+        const isMatch = bcrypt.compareSync(password, userRes.rows[0].password_hash);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Incorrect password" });
+        }
+        
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        otpCache.set(req.user.id, {
+            code: otpCode,
+            expiresAt: Date.now() + 600000 // 10 minutes
+        });
+        
+        // Send email via SMTP or fallback to console
+        if (process.env.SMTP_USER) {
+            try {
+                await transporter.sendMail({
+                    from: '"Life Care System" <noreply@lifecare.com>',
+                    to: req.user.email,
+                    subject: 'Data Reset OTP - Life Care System',
+                    text: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`
+                });
+                return res.json({ success: true, message: "OTP sent to your email." });
+            } catch (emailErr) {
+                console.error("SMTP Email failed, falling back to console:", emailErr.message);
+                console.log(`[FALLBACK EMAIL] OTP sent to admin: ${otpCode}`);
+                return res.json({ success: true, message: "Email failed to send. Check server console for OTP." });
+            }
+        } else {
+            console.log(`[STUB EMAIL] OTP sent to admin: ${otpCode}`);
+            return res.json({ success: true, message: "OTP generated successfully. Check server console." });
+        }
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error("Clear Sales Error:", error);
-        res.status(500).json({ success: false, message: error.message });
-    } finally {
-        client.release();
+        console.error("Request OTP error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.confirmReset = async (req, res) => {
+    try {
+        const ownerId = req.user.owner_id || req.user.id;
+        const { password, confirmText, otp } = req.body;
+        
+        if (!password || !confirmText || !otp) {
+            return res.status(400).json({ success: false, message: "Password, confirmation text, and OTP are required" });
+        }
+        
+        if (confirmText !== 'RESET ALL DATA') {
+            return res.status(400).json({ success: false, message: "Invalid confirmation phrase" });
+        }
+        
+        // Verify password
+        const userRes = await db.query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        const isMatch = bcrypt.compareSync(password, userRes.rows[0].password_hash);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Incorrect password" });
+        }
+        
+        // Verify OTP
+        const cached = otpCache.get(req.user.id);
+        if (!cached || cached.code !== otp || Date.now() > cached.expiresAt) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+        
+        // Delete OTP from cache
+        otpCache.delete(req.user.id);
+        
+        // Perform reset
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Fetch all active sales to restore stock atomically
+            const activeSalesRes = await client.query(`SELECT id FROM sales WHERE owner_id = $1 AND is_deleted = false`, [ownerId]);
+            for (const row of activeSalesRes.rows) {
+                await client.query(`SELECT delete_sale_restore_stock($1, $2, $3)`, [row.id, req.user.id, ownerId]);
+            }
+            
+            // Soft delete attendance
+            await client.query(`UPDATE attendance SET is_deleted = true, deleted_at = NOW() WHERE owner_id = $1`, [ownerId]);
+            
+            await client.query('COMMIT');
+            client.release();
+
+            await audit.logAction(req.user.id, 'DATA_RESET', null, null);
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            
+            res.json({ success: true, message: "System reset successful. All sales and attendance cleared, stock restored." });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            client.release();
+            console.error("Confirm Reset error:", error);
+            res.status(500).json({ success: false, message: "Server error" });
+        }
+    } catch (error) {
+        console.error("Confirm Reset error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.getDeletedRecords = async (req, res) => {
+    try {
+        const ownerId = req.user.owner_id || req.user.id;
+        
+        // Fetch deleted attendance
+        const attRes = await db.query(`
+            SELECT a.id, 'Attendance' as category, a.shake_amount as value, a.deleted_at, a.attendance_date as original_date, c.name as customer_name
+            FROM attendance a
+            LEFT JOIN customers c ON a.customer_id = c.id
+            WHERE a.owner_id = $1 AND a.is_deleted = true
+        `, [ownerId]);
+        
+        // Fetch deleted sales
+        const salesRes = await db.query(`
+            SELECT 
+                s.id, 
+                'Sale' as category, 
+                (SELECT COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) FROM sale_items si WHERE si.sale_id = s.id) as value, 
+                s.deleted_at, 
+                s.sale_date as original_date, 
+                c.name as customer_name
+            FROM sales s
+            LEFT JOIN customers c ON s.customer_id = c.id
+            WHERE s.owner_id = $1 AND s.is_deleted = true
+        `, [ownerId]);
+        
+        const combined = [...attRes.rows, ...salesRes.rows].map(r => ({
+            id: r.id,
+            type: r.category,
+            value: r.value !== null ? parseFloat(r.value) / 100 : 0, // Convert cents to standard currency
+            deletedAt: r.deleted_at,
+            date: r.original_date,
+            customerName: r.customer_name || 'Unknown Customer'
+        }));
+        
+        // Sort by deletedAt desc
+        combined.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+        
+        res.json({ success: true, data: combined });
+    } catch (error) {
+        console.error("Get Deleted Records error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.restoreDeletedRecord = async (req, res) => {
+    try {
+        const ownerId = req.user.owner_id || req.user.id;
+        const { type, id } = req.params; // type is 'sale' or 'attendance'
+        
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            if (type.toLowerCase() === 'attendance') {
+                await client.query(`UPDATE attendance SET is_deleted = false, deleted_at = null WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
+            } else if (type.toLowerCase() === 'sale') {
+                // Check for sufficient stock before restoring
+                const itemsRes = await client.query(`SELECT product_version_id, quantity FROM sale_items WHERE sale_id = $1`, [id]);
+                
+                for (const item of itemsRes.rows) {
+                    const stockRes = await client.query(`SELECT quantity FROM stock WHERE product_version_id = $1 AND owner_id = $2`, [item.product_version_id, ownerId]);
+                    if (stockRes.rows.length === 0 || stockRes.rows[0].quantity < item.quantity) {
+                        throw new Error("Insufficient stock to restore this sale.");
+                    }
+                }
+                
+                // Deduct stock safely
+                for (const item of itemsRes.rows) {
+                    await client.query(`UPDATE stock SET quantity = quantity - $1 WHERE product_version_id = $2 AND owner_id = $3`, [item.quantity, item.product_version_id, ownerId]);
+                }
+                await client.query(`UPDATE sales SET is_deleted = false, deleted_at = null WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
+            } else {
+                throw new Error("Invalid record type");
+            }
+            
+            await client.query('COMMIT');
+            
+            await audit.logAction(req.user.id, 'RECORD_RESTORED', type, id);
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            
+            res.json({ success: true, message: "Record restored successfully." });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error("Restore Deleted Record error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };

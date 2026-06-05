@@ -1,0 +1,146 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                   Int       @id @default(autoincrement())
+  username             String?   @db.VarChar(255)
+  password             String?   @db.VarChar(255)
+  role                 String?   @default("user") @db.VarChar(50)
+  email                String?   @db.VarChar(255)
+  googleId             String?   @map("google_id") @db.VarChar(255)
+  authProvider         String?   @default("local") @map("auth_provider") @db.VarChar(50)
+  ownerId              String?   @map("owner_id") @db.VarChar(255)
+  resetToken           String?   @map("reset_token") @db.VarChar(255)
+  resetTokenExpiry     DateTime? @map("reset_token_expiry") @db.Timestamp()
+  createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamp()
+  updatedAt            DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp()
+  sessionToken         String?   @map("session_token") @db.VarChar(255)
+  lastActiveAt         DateTime? @map("last_active_at") @db.Timestamp()
+  status               String?   @default("active") @db.VarChar(50)
+  mustChangePassword   Boolean?  @default(false) @map("must_change_password")
+  tokenVersion         Int?      @default(1) @map("token_version")
+
+  @@unique([username, ownerId], name: "username_owner_id")
+  @@map("users")
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  ownerId   String?   @map("owner_id") @db.VarChar(255)
+  name      String?   @db.VarChar(255)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp()
+
+  @@map("categories")
+}
+
+model Product {
+  id            Int       @id @default(autoincrement())
+  name          String?   @db.VarChar(255)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp()
+  isActive      Int?      @default(1) @map("is_active")
+  ownerId       String?   @map("owner_id") @db.VarChar(255)
+  sku           String?   @db.VarChar(255)
+  categoryId    Int?      @map("category_id")
+  unit          String?   @db.VarChar(50)
+  sellingPrice  Float?    @map("selling_price") @db.Real
+  costPrice     Float?    @map("cost_price") @db.Real
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp()
+
+  variants      ProductVariant[]
+
+  @@unique([name, ownerId], name: "name_owner_id")
+  @@map("products")
+}
+
+model ProductVariant {
+  id        Int       @id @default(autoincrement())
+  productId Int?      @map("product_id")
+  flavor    String?   @db.VarChar(255)
+  vp        Float?    @default(0) @db.Real
+  sp        Float?    @default(0) @db.Real
+  isActive  Int?      @default(1) @map("is_active")
+  ownerId   String?   @map("owner_id") @db.VarChar(255)
+
+  product      Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stock        Stock?
+  stockEntries StockEntry[]
+  sales        Sale[]
+
+  @@map("product_variants")
+}
+
+// Keeping Stock for migration phase
+model Stock {
+  id         Int       @id @default(autoincrement())
+  variantId  Int?      @unique @map("variant_id")
+  qty        Int?      @default(0)
+  ownerId    String?   @map("owner_id") @db.VarChar(255)
+
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@map("stock")
+}
+
+model StockEntry {
+  id             Int       @id @default(autoincrement())
+  ownerId        String?   @map("owner_id") @db.VarChar(255)
+  variantId      Int?      @map("variant_id")
+  quantityAdded  Int?      @map("quantity_added")
+  purchasePrice  Float?    @map("purchase_price") @db.Real
+  addedBy        String?   @map("added_by") @db.VarChar(255)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp()
+
+  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@map("stock_entries")
+}
+
+model Sale {
+  id            Int       @id @default(autoincrement())
+  variantId     Int?      @map("variant_id")
+  customer      String?   @db.VarChar(255)
+  qty           Int?
+  profit        Float?    @db.Real
+  date          DateTime? @default(dbgenerated("CURRENT_DATE")) @db.Date
+  ownerId       String?   @map("owner_id") @db.VarChar(255)
+  
+  soldPrice     Float?    @map("sold_price") @db.Real
+  soldBy        String?   @map("sold_by") @db.VarChar(255)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp()
+
+  variant       ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@map("sales")
+}
+
+model Attendance {
+  id           Int       @id @default(autoincrement())
+  name         String?   @db.VarChar(255)
+  status       String?   @db.VarChar(50)
+  shakeProfit  Float?    @map("shake_profit") @db.Real
+  date         DateTime? @default(dbgenerated("CURRENT_DATE")) @db.Date
+  ownerId      String?   @map("owner_id") @db.VarChar(255)
+
+  userId       Int?      @map("user_id")
+  markedBy     String?   @map("marked_by") @db.VarChar(255)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp()
+
+  @@map("attendance")
+}
+
+model Session {
+  id          Int       @id @default(autoincrement())
+  userId      Int?      @map("user_id")
+  tokenHash   String?   @map("token_hash") @db.VarChar(255)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamp()
+  deviceInfo  String?   @map("device_info") @db.VarChar(255)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp()
+
+  @@map("sessions")
+}

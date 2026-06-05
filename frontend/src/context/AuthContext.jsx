@@ -1,128 +1,69 @@
-import React, { createContext, useContext, useState } from 'react';
+"use client";
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 import useStore from '../store/useStore';
 
 const AuthContext = createContext();
 
-export function AuthProvider({ children }) {
-    const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')) || null);
+const setStorage = (key, val) => {
+    if (typeof window !== 'undefined') localStorage.setItem(key, val);
+};
+const getStorage = (key) => {
+    if (typeof window !== 'undefined') return localStorage.getItem(key);
+    return null;
+};
+const removeStorage = (key) => {
+    if (typeof window !== 'undefined') localStorage.removeItem(key);
+};
 
-    const login = async (username, password) => {
+export function AuthProvider({ children }) {
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const saved = getStorage('user');
+            if (saved) {
+                try {
+                    setUser(JSON.parse(saved));
+                } catch (e) {
+                    removeStorage('user');
+                }
+            }
+        }
+        setLoading(false);
+    }, []);
+
+    const login = async (email, password) => {
         try {
             useStore.getState().resetStore();
-            const { data } = await api.post('/auth/login', { username, password });
-            if (!data?.token) throw new Error('Invalid response from server');
-            localStorage.setItem('token', data.token);
-            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-            localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { username: data.username, email: data.email };
-            localStorage.setItem('user', JSON.stringify(loggedInUser));
+            const { data } = await api.post('/auth/login', { email, password });
+            
+            // Note: Tokens are no longer stored in localStorage (HttpOnly cookies now)
+            // But we keep user details for UI rendering
+            const loggedInUser = { id: data.user.id, email: data.user.email, role: data.user.role, force_password_change: data.user.force_password_change };
+            setStorage('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Login failed';
-            throw new Error(msg);
+            const err = new Error(msg);
+            err.response = error.response;
+            throw err;
         }
     };
 
     const logout = async () => {
-        const refreshToken = localStorage.getItem('refreshToken');
-        try { await api.post('/auth/logout', { sessionId, refreshToken }); } catch (_) {}
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('sessionId');
-        useStore.getState().resetStore();
+        try { await api.post('/auth/logout'); } catch (_) {}
+        removeStorage('user');
         setUser(null);
-    };
-
-    const googleLogin = async (idToken) => {
-        try {
-            useStore.getState().resetStore();
-            localStorage.clear();
-            sessionStorage.clear();
-            
-            const { data } = await api.post('/auth/google', { idToken });
-            if (!data?.token) throw new Error('Invalid response from server');
-            
-            // Set initial temp token
-            localStorage.setItem('token', data.token);
-            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-            
-            return data; // { allowedRoles, user }
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Google Login failed';
-            throw new Error(msg);
-        }
-    };
-
-    const selectRole = async (selectedRole) => {
-        try {
-            const { data } = await api.post('/auth/select-role', { selectedRole });
-            return data; // { success, hasPassword }
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Role selection failed';
-            throw new Error(msg);
-        }
-    };
-
-    const _finalizeAuth = (data) => {
-        if (!data?.token) throw new Error('Invalid response from server');
-        localStorage.setItem('token', data.token);
-        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-        localStorage.setItem('sessionId', String(data.sessionId || ''));
-        localStorage.setItem('role', data.role);
-        const loggedInUser = { ...data.user, role: data.role };
-        localStorage.setItem('user', JSON.stringify(loggedInUser));
-        setUser(loggedInUser);
-    };
-
-    const verifyPassword = async (selectedRole, password) => {
-        try {
-            const { data } = await api.post('/auth/verify-password', { selectedRole, password });
-            _finalizeAuth(data);
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Password verification failed';
-            throw new Error(msg);
-        }
-    };
-
-    const setPassword = async (selectedRole, password) => {
-        try {
-            const { data } = await api.post('/auth/set-password', { selectedRole, password });
-            _finalizeAuth(data);
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Password creation failed';
-            throw new Error(msg);
-        }
-    };
-
-    const forgotPassword = async (selectedRole) => {
-        try {
-            const { data } = await api.post('/auth/forgot-password', { selectedRole });
-            return data;
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Forgot password failed';
-            throw new Error(msg);
-        }
-    };
-
-    const resetPassword = async (token, newPassword) => {
-        try {
-            const { data } = await api.post('/auth/reset-password', { token, newPassword });
-            return data;
-        } catch (error) {
-            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Reset password failed';
-            throw new Error(msg);
-        }
+        useStore.getState().resetStore();
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, googleLogin, selectRole, verifyPassword, setPassword, forgotPassword, resetPassword }}>
+        <AuthContext.Provider value={{ user, login, logout, loading, setUser }}>
             {children}
         </AuthContext.Provider>
     );
 }
 
-export function useAuth() {
-    return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

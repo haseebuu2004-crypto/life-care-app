@@ -1,143 +1,208 @@
-const pool = require('../config/db');
+const db = require('../db');
+const audit = require('./auditLogService');
+const cache = require('./cacheService');
 
-exports.getAllSales = async (ownerId) => {
-    const { rows } = await pool.query(`
-        SELECT s.id as id, si.id as item_id, s.date, s.customer, pv.flavor, p.name as product_name, si.qty, si.sale_price, si.total_amount, si.profit, si.variant_id as stock_id
-        FROM sale_items si
-        JOIN sales s ON si.sale_id = s.id
-        LEFT JOIN product_variants pv ON si.variant_id = pv.id
+exports.getAllSales = async (ownerId, recordedById = null) => {
+    // We want to return Sales, with their items grouped inside
+    let query = `
+        SELECT 
+            s.id as sale_id,
+            s.sale_date as date,
+            c.name as customer,
+            u.email as recorded_by_email,
+            si.id as item_id,
+            f.name as flavor,
+            p.name as product_name,
+            si.quantity as qty,
+            si.price_charged,
+            si.standard_price_snap,
+            si.vendor_price_snap,
+            si.product_version_id as stock_id
+        FROM sales s
+        JOIN customers c ON s.customer_id = c.id
+        JOIN users u ON s.recorded_by = u.id
+        LEFT JOIN sale_items si ON si.sale_id = s.id
+        LEFT JOIN product_versions pv ON si.product_version_id = pv.id
         LEFT JOIN products p ON pv.product_id = p.id
-        WHERE s.owner_id = $1
-        ORDER BY s.date DESC
-    `, [ownerId]);
-    return rows;
+        LEFT JOIN flavours f ON si.flavour_id = f.id
+        WHERE s.owner_id = $1 AND s.is_deleted = false
+    `;
+    
+    const params = [ownerId];
+    if (recordedById) {
+        query += ` AND s.recorded_by = $2`;
+        params.push(recordedById);
+    }
+    
+    query += ` ORDER BY s.sale_date DESC, s.created_at DESC`;
+    
+    const res = await db.query(query, params);
+
+    const salesMap = new Map();
+    
+    res.rows.forEach(row => {
+        if (!salesMap.has(row.sale_id)) {
+            salesMap.set(row.sale_id, {
+                id: row.sale_id,
+                date: row.date,
+                customer: row.customer,
+                recorded_by: row.recorded_by_email,
+                total_amount: 0,
+                total_profit: 0,
+                items: []
+            });
+        }
+        
+        const sale = salesMap.get(row.sale_id);
+        
+        if (row.item_id) {
+            const salePrice = row.price_charged / 100;
+            const vendorPrice = row.vendor_price_snap / 100;
+            const standardPrice = row.standard_price_snap / 100;
+            const profit = (salePrice - vendorPrice) * row.qty;
+            
+            sale.total_amount += (salePrice * row.qty);
+            sale.total_profit += profit;
+            
+            sale.items.push({
+                item_id: row.item_id,
+                product_name: row.product_name,
+                flavor: row.flavor || 'Base',
+                qty: row.qty,
+                sale_price: salePrice,
+                standard_price: standardPrice,
+                vendor_price: vendorPrice,
+                profit: profit
+            });
+        }
+    });
+
+    return Array.from(salesMap.values());
 };
 
-exports.addSaleTransaction = async (date, customerName, uniqueProducts, ownerId) => {
-    const client = await pool.connect();
+exports.addSaleTransaction = async (date, customerId, uniqueItems, ownerId, recordedBy) => {
+    const itemsJson = uniqueItems.map(p => ({
+        product_version_id: p.product_version_id,
+        flavour_id: p.flavour_id || null,
+        quantity: parseInt(p.quantity) || 0,
+        price_charged: parseInt(p.price_charged) || 0,
+        standard_price_snap: parseInt(p.standard_price_snap) || 0,
+        vendor_price_snap: parseInt(p.vendor_price_snap) || 0
+    }));
+
     try {
-        await client.query('BEGIN');
+        const res = await db.query(`
+            SELECT create_sale_atomic($1, $2, $3, $4, $5::jsonb) as sale_id
+        `, [ownerId, customerId, date, recordedBy, JSON.stringify(itemsJson)]);
         
-        const insertSaleRes = await client.query(
-            'INSERT INTO sales (date, customer, total_amount, total_profit, owner_id) VALUES ($1, $2, 0, 0, $3) RETURNING id', 
-            [date, customerName, ownerId]
-        );
-        const saleId = insertSaleRes.rows[0].id;
+        const saleId = res.rows[0].sale_id;
         
-        let saleTotalAmount = 0;
-        let saleTotalProfit = 0;
+        const isBackdated = date !== new Date().toISOString().split('T')[0];
+        const logAction = isBackdated ? 'SALE_CREATE_BACKDATED' : 'SALE_CREATE';
+        
+        await audit.logAction(recordedBy, logAction, 'sales', saleId);
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 
-        for (const p of uniqueProducts) {
-            const stockRes = await client.query(`
-                SELECT s.qty, pr.name as product_name, pv.flavor, pv.sp as cost_price
-                FROM stock s 
-                JOIN product_variants pv ON s.variant_id = pv.id
-                JOIN products pr ON pv.product_id = pr.id
-                WHERE s.variant_id = $1 AND s.owner_id = $2
-            `, [p.stock_id, ownerId]);
-            
-            const row = stockRes.rows[0];
-            
-            if (!row) {
-                throw new Error("Invalid product variant selected.");
+        // Check for notifications
+        const notifService = require('./notificationService');
+        const configRes = await db.query(`SELECT low_stock_threshold, discount_alert_pct FROM admin_config WHERE owner_id = $1`, [ownerId]);
+        const config = configRes.rows[0] || { low_stock_threshold: 10, discount_alert_pct: 30 };
+
+        // Fetch staff / recorder's name
+        const userRes = await db.query(`SELECT email FROM users WHERE id = $1`, [recordedBy]);
+        const staffName = userRes.rows[0]?.email ? userRes.rows[0].email.split('@')[0] : 'Staff';
+
+        // Fetch customer's name
+        const custRes = await db.query(`SELECT name FROM customers WHERE id = $1`, [customerId]);
+        const customerName = custRes.rows[0]?.name || 'Customer';
+
+        for (const p of itemsJson) {
+            // Check stock remaining
+            const stockRes = await db.query(`SELECT quantity FROM stock WHERE product_version_id = $1 AND owner_id = $2`, [p.product_version_id, ownerId]);
+            const remaining = stockRes.rows[0]?.quantity || 0;
+            const productNameRes = await db.query(`
+                SELECT p.name FROM products p JOIN product_versions pv ON pv.product_id = p.id WHERE pv.id = $1
+            `, [p.product_version_id]);
+            const prodName = productNameRes.rows[0]?.name || 'Product';
+
+            if (remaining === 0) {
+                await notifService.createNotification(ownerId, 'out_of_stock', `${prodName} is out of stock`, `All units have been sold. Add stock to continue selling.`, { product_name: prodName }, true);
+            } else if (remaining <= config.low_stock_threshold) {
+                await notifService.createNotification(ownerId, 'low_stock', `${prodName} is running low`, `Only ${remaining} units remaining. Consider restocking soon.`, { product_name: prodName, quantity: remaining }, false);
             }
-            
-            if (row.qty < p.quantity) {
-                const flavorText = row.flavor && row.flavor !== 'Base' ? ` (${row.flavor})` : '';
-                throw new Error(`Only ${row.qty} units available for ${row.product_name}${flavorText}`);
-            }
-
-            // Perform secure server-side calculations
-            const costPrice = parseFloat(row.cost_price) || 0;
-            const requestedSellingPrice = parseFloat(p.sale_price) || 0;
-            
-            const backendTotalAmount = requestedSellingPrice * p.quantity;
-            const backendProfit = (requestedSellingPrice - costPrice) * p.quantity;
-
-            await client.query('UPDATE stock SET qty = qty - $1 WHERE variant_id = $2 AND owner_id = $3', [p.quantity, p.stock_id, ownerId]);
-            
-            await client.query(
-                'INSERT INTO sale_items (sale_id, variant_id, qty, sale_price, total_amount, profit, owner_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                [saleId, p.stock_id, p.quantity, requestedSellingPrice, backendTotalAmount, backendProfit, ownerId]
-            );
-            
-            saleTotalAmount += backendTotalAmount;
-            saleTotalProfit += backendProfit;
         }
-
-        await client.query('UPDATE sales SET total_amount = $1, total_profit = $2 WHERE id = $3 AND owner_id = $4', [saleTotalAmount, saleTotalProfit, saleId, ownerId]);
-        
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
+    } catch (e) {
+        if (e.message.includes('INSUFFICIENT_STOCK')) {
+            throw new Error('Insufficient stock');
+        }
+        throw e;
     }
 };
 
-exports.deleteSaleTransaction = async (id, ownerId) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        
-        const saleRes = await client.query('SELECT id FROM sales WHERE id = $1 AND owner_id = $2', [id, ownerId]);
-        if (saleRes.rows.length === 0) {
-            throw new Error("Sale not found");
-        }
-
-        const itemsRes = await client.query('SELECT variant_id, qty FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [id, ownerId]);
-        const items = itemsRes.rows;
-
-        for (const item of items) {
-            await client.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, item.variant_id, ownerId]);
-        }
-
-        await client.query('DELETE FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [id, ownerId]);
-        await client.query('DELETE FROM sales WHERE id = $1 AND owner_id = $2', [id, ownerId]);
-        
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
+exports.deleteSaleTransaction = async (saleId, ownerId, deletedBy) => {
+    const res = await db.query(`
+        SELECT delete_sale_restore_stock($1, $2, $3) as success
+    `, [saleId, deletedBy, ownerId]);
+    
+    if (!res.rows[0].success) {
+        throw new Error("Sale not found or already deleted");
     }
+
+    await audit.logAction(deletedBy, 'SALE_DELETE', 'sales', saleId);
+    await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 };
 
-exports.deleteSaleItem = async (itemId, ownerId) => {
-    const client = await pool.connect();
+exports.deleteSaleItemTransaction = async (itemId, ownerId, userId, userRole) => {
+    const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
         
-        const itemRes = await client.query('SELECT * FROM sale_items WHERE id = $1 AND owner_id = $2', [itemId, ownerId]);
+        // 1. Get the item and its parent sale
+        const itemRes = await client.query(`
+            SELECT si.sale_id, si.quantity, si.product_version_id, s.recorded_by
+            FROM sale_items si
+            JOIN sales s ON si.sale_id = s.id
+            WHERE si.id = $1 AND s.owner_id = $2 AND s.is_deleted = false
+        `, [itemId, ownerId]);
+        
         if (itemRes.rows.length === 0) {
-            throw new Error("Sale item not found");
+            throw new Error("Sale item not found or already deleted");
         }
-        const item = itemRes.rows[0];
-
-        // Update stock
-        await client.query('UPDATE stock SET qty = qty + $1 WHERE variant_id = $2 AND owner_id = $3', [item.qty, item.variant_id, ownerId]);
-
-        // Delete the item
-        await client.query('DELETE FROM sale_items WHERE id = $1 AND owner_id = $2', [itemId, ownerId]);
-
-        // Check if there are any items left in the sale
-        const remainingRes = await client.query('SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as sum_amount, COALESCE(SUM(profit), 0) as sum_profit FROM sale_items WHERE sale_id = $1 AND owner_id = $2', [item.sale_id, ownerId]);
         
-        const count = parseInt(remainingRes.rows[0].count);
-        if (count === 0) {
-            // Delete entire sale if no items left
-            await client.query('DELETE FROM sales WHERE id = $1 AND owner_id = $2', [item.sale_id, ownerId]);
-        } else {
-            // Update the sale totals
-            await client.query('UPDATE sales SET total_amount = $1, total_profit = $2 WHERE id = $3 AND owner_id = $4', [remainingRes.rows[0].sum_amount, remainingRes.rows[0].sum_profit, item.sale_id, ownerId]);
+        const item = itemRes.rows[0];
+        
+        // 2. Permission check
+        if (userRole !== 'admin' && item.recorded_by !== userId) {
+            throw new Error("You don't have permission to delete this sale item.");
         }
+        
+        // 3. Count remaining items in the sale
+        const countRes = await client.query(`SELECT count(*) FROM sale_items WHERE sale_id = $1`, [item.sale_id]);
+        const count = parseInt(countRes.rows[0].count);
+        
+        if (count <= 1) {
+            // It's the last item, just delete the entire sale
+            await client.query('ROLLBACK');
+            return exports.deleteSaleTransaction(item.sale_id, ownerId, userId);
+        }
+        
+        // 4. Delete the item
+        await client.query(`DELETE FROM sale_items WHERE id = $1`, [itemId]);
+        
+        // 5. Restore stock
+        await client.query(`
+            UPDATE stock 
+            SET quantity = quantity + $1 
+            WHERE product_version_id = $2 AND owner_id = $3
+        `, [item.quantity, item.product_version_id, ownerId]);
         
         await client.query('COMMIT');
-    } catch (err) {
+        
+        await audit.logAction(userId, 'SALE_ITEM_DELETE', 'sale_items', itemId);
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+    } catch (error) {
         await client.query('ROLLBACK');
-        throw err;
+        throw error;
     } finally {
         client.release();
     }
