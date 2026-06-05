@@ -72,7 +72,7 @@ exports.addSaleTransaction = async (date, customerId, uniqueItems, ownerId, reco
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 
         // Check for notifications — lazy require to avoid circular dependency
-        const notifService = require('../../services/notificationService');
+        const notifService = require('../notifications/notifications.service');
         const configQuery = queries.getAdminConfig(ownerId);
         const configRes = await db.query(configQuery.text, configQuery.values);
         const config = configRes.rows[0] || { low_stock_threshold: 10, discount_alert_pct: 30 };

@@ -21,6 +21,7 @@ const { apiLimiter, reportLimiter, backupLimiter } = require('../middleware/rate
 
 const settingsRoutes = require('../features/settings/settings.routes');
 const masterRoutes = require('../features/master/master.routes');
+const authRoutes = require('../features/auth/auth.routes');
 
 // Apply API-wide rate limiting to everything except auth endpoints which have their own
 router.use(apiLimiter);
@@ -28,6 +29,7 @@ router.use(apiLimiter);
 // ---------------------------------------------------------
 // NEW SETTINGS & MASTER ROUTES
 // ---------------------------------------------------------
+router.use('/auth', authRoutes);
 router.use('/', settingsRoutes);
 router.use('/master', masterRoutes);
 
