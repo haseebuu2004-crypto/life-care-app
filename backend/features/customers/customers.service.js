@@ -50,3 +50,15 @@ exports.getCustomerSummary = async (id, ownerId) => {
         totalShakeProfit: totalShakeProfit / 100
     };
 };
+
+exports.findOrCreateCustomer = async (ownerId, customerName, userId) => {
+    const existing = await queries.findCustomerByName(ownerId, customerName);
+    if (existing.rows.length > 0) {
+        return existing.rows[0].id;
+    } else {
+        const newCust = await queries.insertCustomerMinimal(ownerId, customerName);
+        const newId = newCust.rows[0].id;
+        await audit.logAction(userId, 'CUSTOMER_CREATE', 'customers', newId);
+        return newId;
+    }
+};
