@@ -9,13 +9,13 @@ Module.prototype.require = function(path) {
 };
 
 const express = require('express');
-const notificationsRoutes = require('./backend/features/notifications/notifications.routes');
+const stockRoutes = require('./backend/features/stock/stock.routes');
 
 const app = express();
-app.use('/api', notificationsRoutes);
+app.use('/api', stockRoutes);
 
-console.log("Registered Routes in notifications.routes.js:");
-notificationsRoutes.stack.forEach(layer => {
+console.log("Registered Routes in stock.routes.js:");
+stockRoutes.stack.forEach(layer => {
     if (layer.route) {
         const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(', ');
         const path = layer.route.path;
