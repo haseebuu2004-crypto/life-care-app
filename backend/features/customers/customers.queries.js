@@ -46,3 +46,11 @@ exports.getCustomerSummary_Sales = (id) => {
 exports.getCustomerSummary_Attendance = (id) => {
     return db.query(`SELECT id, attendance_date, type, shake_amount FROM attendance WHERE customer_id = $1 AND is_deleted = false ORDER BY attendance_date DESC`, [id]);
 };
+
+exports.findCustomerByName = (ownerId, customerName) => {
+    return db.query(`SELECT id FROM customers WHERE owner_id = $1 AND name ILIKE $2`, [ownerId, customerName.trim()]);
+};
+
+exports.insertCustomerMinimal = (ownerId, customerName) => {
+    return db.query(`INSERT INTO customers (owner_id, name) VALUES ($1, $2) RETURNING id`, [ownerId, customerName.trim()]);
+};
