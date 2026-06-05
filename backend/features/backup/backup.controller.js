@@ -120,7 +120,7 @@ exports.confirmRestore = async (req, res) => {
         await pool.query(logQ.text, logQ.values);
 
         // Invalidate dashboard cache so stock/sales reflect the restore immediately
-        const cache = require('../../services/cacheService');
+        const cache = require('../../shared/services/cacheService');
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 
         res.json({ success: true, data: result });

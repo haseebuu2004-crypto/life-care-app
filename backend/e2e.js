@@ -78,9 +78,15 @@ async function runE2E() {
         const custId = cRes.data.customer_id || (await pool.query("SELECT id FROM customers LIMIT 1")).rows[0].id;
 
         const sale1 = await api('POST', '/sales', {
-            customerId: custId,
-            date: new Date().toISOString(),
-            products: [{ stock_id: pvid1, quantity: 1, sale_price: 2000 }]
+            customer_id: custId,
+            sale_date: new Date().toISOString(),
+            items: [{ 
+                product_version_id: pvid1, 
+                quantity: 1, 
+                price_charged: 2000, 
+                standard_price_snap: 2000, 
+                vendor_price_snap: 1000 
+            }]
         });
         console.log("Sale 1 done.");
 
@@ -95,17 +101,29 @@ async function runE2E() {
 
         // 5. Sell 1 at NEW standard price (2500)
         const sale2 = await api('POST', '/sales', {
-            customerId: custId,
-            date: new Date().toISOString(),
-            products: [{ stock_id: pvid2, quantity: 1, sale_price: 2500 }]
+            customer_id: custId,
+            sale_date: new Date().toISOString(),
+            items: [{ 
+                product_version_id: pvid2, 
+                quantity: 1, 
+                price_charged: 2500, 
+                standard_price_snap: 2500, 
+                vendor_price_snap: 1200 
+            }]
         });
         console.log("Sale 2 done.");
 
         // 6. Sell 1 at custom price (2400)
         const sale3 = await api('POST', '/sales', {
-            customerId: custId,
-            date: new Date().toISOString(),
-            products: [{ stock_id: pvid2, quantity: 1, sale_price: 2400 }]
+            customer_id: custId,
+            sale_date: new Date().toISOString(),
+            items: [{ 
+                product_version_id: pvid2, 
+                quantity: 1, 
+                price_charged: 2400, 
+                standard_price_snap: 2500, 
+                vendor_price_snap: 1200 
+            }]
         });
         console.log("Sale 3 done.");
 

@@ -1,5 +1,5 @@
 const reportsService = require('./reports.service');
-const audit = require('../../services/auditLogService');
+const audit = require('../../shared/services/auditLogService');
 
 exports.exportData = async (req, res) => {
     try {

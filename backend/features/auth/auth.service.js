@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
 const queries = require('./auth.queries');
-const audit = require('../../services/auditLogService');
+const audit = require('../../shared/services/auditLogService');
 const notificationService = require('../notifications/notifications.service'); // Same relative path from features/auth as features/settings
 
 class AuthService {

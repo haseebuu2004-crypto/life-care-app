@@ -3,7 +3,7 @@ const router = express.Router();
 const customerController = require('./customers.controller');
 const customerValidation = require('./customers.validation');
 const { authenticateToken } = require('../../shared/middleware/auth');
-const { requireAdmin } = require('../../middleware/authMiddleware');
+const { requireAdmin } = require('../../shared/middleware/authMiddleware');
 
 router.get('/', authenticateToken, customerController.getCustomers);
 router.post('/', authenticateToken, customerValidation.validateAddCustomer, customerController.addCustomer);

@@ -6,7 +6,7 @@ const compression = require('compression');
 const path = require('path');
 const apiRoutes = require('./routes/api');
 const db = require('./config/db');
-const cronService = require('./services/cronService');
+const cronService = require('./shared/services/cronService');
 
 const helmet = require('helmet');
 

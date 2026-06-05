@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../../db');
 const queries = require('./settings.queries');
-const audit = require('../../services/auditLogService');
+const audit = require('../../shared/services/auditLogService');
 const authService = require('../auth/auth.service');
 const notificationService = require('../notifications/notifications.service');
 

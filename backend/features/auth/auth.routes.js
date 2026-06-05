@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('./auth.controller');
-const { authenticateToken } = require('../../middleware/authMiddleware');
-const validate = require('../../middleware/validate');
+const { authenticateToken } = require('../../shared/middleware/authMiddleware');
+const validate = require('../../shared/middleware/validate');
 const { loginSchema } = require('../../schemas/apiSchemas');
-const { loginLimiter, passwordResetLimiter } = require('../../middleware/rateLimiters');
+const { loginLimiter, passwordResetLimiter } = require('../../shared/middleware/rateLimiters');
 
 // ---------------------------------------------------------
 // AUTHENTICATION & LOGIN FLOW
