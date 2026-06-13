@@ -56,9 +56,9 @@ function SaleRow({ sale, onDelete }) {
                                 </thead>
                                 <tbody>
                                     {(sale.items || []).map((item, idx) => (
-                                        <tr key={idx}>
+                                        <tr key={item.item_id || `sale-item-${idx}`}>
                                             <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9' }}>
-                                                <strong>{item.product_name}</strong> {item.flavor !== 'Base' && <span style={{color: 'var(--text-light)'}}>({item.flavor})</span>}
+                                                <strong>{item.displayName || 'Unknown Product'}</strong>
                                             </td>
                                             <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>{item.qty}</td>
                                             <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 'bold' }}>{formatRupees((item.sale_price || 0) * 100)}</td>

@@ -159,24 +159,11 @@ export function AdminBackupCenter() {
                                         </div>
 
                                         <div style={{ marginBottom: 16 }}>
-                                            <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, fontSize: 14 }}>Restore Strategy</label>
-                                            
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 8, background: restoreStrategy === 'merge' ? '#eff6ff' : 'transparent', borderRadius: 6, border: `1px solid ${restoreStrategy === 'merge' ? '#bfdbfe' : 'transparent'}` }}>
-                                                    <input type="radio" name="strategy" value="merge" checked={restoreStrategy === 'merge'} onChange={() => setRestoreStrategy('merge')} style={{ marginTop: 4 }} />
-                                                    <div>
-                                                        <strong>Safe Merge (Recommended)</strong>
-                                                        <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Updates existing records and adds missing ones. Keeps new data safe.</p>
-                                                    </div>
-                                                </label>
-                                                
-                                                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 8, background: restoreStrategy === 'wipe' ? '#fef2f2' : 'transparent', borderRadius: 6, border: `1px solid ${restoreStrategy === 'wipe' ? '#fecaca' : 'transparent'}` }}>
-                                                    <input type="radio" name="strategy" value="wipe" checked={restoreStrategy === 'wipe'} onChange={() => setRestoreStrategy('wipe')} style={{ marginTop: 4 }} />
-                                                    <div>
-                                                        <strong style={{ color: '#b91c1c' }}>Full Rollback (Emergency)</strong>
-                                                        <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Wipes current data completely before inserting backup. Use with extreme caution.</p>
-                                                    </div>
-                                                </label>
+                                            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 12, background: '#eff6ff', borderRadius: 6, border: `1px solid #bfdbfe` }}>
+                                                <div>
+                                                    <strong style={{ color: '#1e40af' }}>Safe Merge Active</strong>
+                                                    <p style={{ margin: 0, fontSize: 12, color: '#475569', marginTop: 4 }}>This restore will only update existing records and add missing ones. Your current live data will not be deleted.</p>
+                                                </div>
                                             </div>
                                         </div>
 

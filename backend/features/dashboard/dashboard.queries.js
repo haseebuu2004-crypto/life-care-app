@@ -13,17 +13,26 @@ exports.getAdminConfig = (ownerId) => {
 // Get Dashboard Scalars (5-way analytics query)
 // Source: dashboardController.js lines 67-74
 // ============================================================
-exports.getDashboardScalars = (ownerId, lowStockThresh, startDate, endDate) => {
+exports.getDashboardPeriodScalars = (ownerId, startDate, endDate) => {
     return {
         text: `
             SELECT 
-                (SELECT COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $3 AND s.sale_date <= $4 AND s.is_deleted = false) as "totalSalesProfit",
-                (SELECT COALESCE(SUM(si.price_charged * si.quantity), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $3 AND s.sale_date <= $4 AND s.is_deleted = false) as "totalSalesRevenue",
-                (SELECT COALESCE(SUM(s.quantity * s.vendor_price_snap), 0) FROM stock s JOIN product_versions pv ON s.product_version_id = pv.id WHERE s.owner_id = $1 AND pv.is_active = true) as "totalStockVpValue",
-                (SELECT COALESCE(SUM(shake_amount), 0) FROM attendance WHERE owner_id = $1 AND attendance_date >= $3 AND attendance_date <= $4 AND is_deleted = false) as "totalShakeProfit",
-                (SELECT COUNT(*) FROM stock s JOIN product_versions pv ON s.product_version_id = pv.id WHERE s.owner_id = $1 AND s.quantity <= $2 AND pv.is_active = true) as "lowStock"
+                (SELECT COALESCE(SUM((si.price_charged::integer - si.vendor_price_snap::integer) * si.quantity::integer), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $2 AND s.sale_date <= $3 AND s.is_deleted = false) as "totalSalesProfit",
+                (SELECT COALESCE(SUM(si.price_charged::integer * si.quantity::integer), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1 AND s.sale_date >= $2 AND s.sale_date <= $3 AND s.is_deleted = false) as "totalSalesRevenue",
+                (SELECT COALESCE(SUM(shake_amount::integer), 0) FROM attendance WHERE owner_id = $1 AND attendance_date >= $2 AND attendance_date <= $3 AND is_deleted = false) as "totalShakeProfit"
         `,
-        values: [ownerId, lowStockThresh, startDate, endDate]
+        values: [ownerId, startDate, endDate]
+    };
+};
+
+exports.getDashboardPitScalars = (ownerId) => {
+    return {
+        text: `
+            SELECT 
+                (SELECT COALESCE(SUM(s.quantity::integer * pv.vendor_price::integer), 0) FROM stock s JOIN product_versions pv ON s.product_version_id = pv.id JOIN variants v ON s.variant_id = v.id WHERE s.owner_id = $1 AND pv.is_active = true AND v.is_active = true) as "totalStockVpValue",
+                (SELECT COUNT(*) FROM stock s JOIN variants v ON s.variant_id = v.id JOIN product_versions pv ON s.product_version_id = pv.id WHERE s.owner_id = $1 AND s.quantity <= v.low_stock_threshold AND v.alert_enabled = true AND pv.is_active = true AND v.is_active = true) as "lowStock"
+        `,
+        values: [ownerId]
     };
 };
 
@@ -31,17 +40,24 @@ exports.getDashboardScalars = (ownerId, lowStockThresh, startDate, endDate) => {
 // Get Low Stock Items
 // Source: dashboardController.js lines 78-85
 // ============================================================
-exports.getLowStockItems = (ownerId, lowStockThresh) => {
+exports.getLowStockItems = (ownerId) => {
     return {
         text: `
-            SELECT s.id, p.name as product_name, s.quantity as qty
+            SELECT s.id, 
+                   CASE WHEN v.name != 'Base' THEN p.name || ' | ' || v.name ELSE p.name END as product_name, 
+                   s.quantity as qty
             FROM stock s
+            JOIN variants v ON s.variant_id = v.id
             JOIN product_versions pv ON s.product_version_id = pv.id
             JOIN products p ON pv.product_id = p.id
-            WHERE s.quantity <= $2 AND s.owner_id = $1 AND pv.is_active = true
+            WHERE s.quantity <= v.low_stock_threshold 
+              AND v.alert_enabled = true 
+              AND s.owner_id = $1 
+              AND pv.is_active = true
+              AND v.is_active = true
             ORDER BY s.quantity ASC
         `,
-        values: [ownerId, lowStockThresh]
+        values: [ownerId]
     };
 };
 
@@ -52,13 +68,16 @@ exports.getLowStockItems = (ownerId, lowStockThresh) => {
 exports.getMonthlyProductSales = (ownerId, startDate, endDate) => {
     return {
         text: `
-            SELECT p.name, SUM(si.quantity) as qty
+            SELECT 
+                CASE WHEN v.name != 'Base' THEN p.name || ' | ' || v.name ELSE p.name END as name, 
+                SUM(si.quantity::integer) as qty
             FROM sale_items si
             JOIN sales s ON si.sale_id = s.id
-            JOIN product_versions pv ON s.product_version_id = pv.id
+            JOIN variants v ON si.variant_id = v.id
+            JOIN product_versions pv ON si.product_version_id = pv.id
             JOIN products p ON pv.product_id = p.id
             WHERE s.sale_date >= $1 AND s.sale_date <= $3 AND s.owner_id = $2 AND s.is_deleted = false
-            GROUP BY p.name
+            GROUP BY p.name, v.name
             ORDER BY qty DESC
         `,
         values: [startDate, ownerId, endDate]
@@ -72,7 +91,7 @@ exports.getMonthlyProductSales = (ownerId, startDate, endDate) => {
 exports.getTopCustomers = (ownerId, startDate, endDate) => {
     return {
         text: `
-            SELECT c.name, COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) as profit
+            SELECT c.name, COALESCE(SUM((si.price_charged::integer - si.vendor_price_snap::integer) * si.quantity::integer), 0) as profit
             FROM sale_items si
             JOIN sales s ON si.sale_id = s.id
             JOIN customers c ON s.customer_id = c.id
@@ -195,7 +214,7 @@ exports.getDeletedSales = (ownerId) => {
             SELECT 
                 s.id, 
                 'Sale' as category, 
-                (SELECT COALESCE(SUM((si.price_charged - si.vendor_price_snap) * si.quantity), 0) FROM sale_items si WHERE si.sale_id = s.id) as value, 
+                (SELECT COALESCE(SUM((si.price_charged::integer - si.vendor_price_snap::integer) * si.quantity::integer), 0) FROM sale_items si WHERE si.sale_id = s.id) as value, 
                 s.deleted_at, 
                 s.sale_date as original_date, 
                 c.name as customer_name
@@ -224,7 +243,7 @@ exports.restoreAttendance = (attendanceId, ownerId) => {
 // ============================================================
 exports.getSaleItemsForRestore = (saleId) => {
     return {
-        text: `SELECT product_version_id, quantity FROM sale_items WHERE sale_id = $1`,
+        text: `SELECT product_version_id, variant_id, quantity FROM sale_items WHERE sale_id = $1`,
         values: [saleId]
     };
 };
@@ -233,10 +252,10 @@ exports.getSaleItemsForRestore = (saleId) => {
 // Get Stock for Restoration Check
 // Source: dashboardController.js line 514
 // ============================================================
-exports.getStockForRestore = (productVersionId, ownerId) => {
+exports.getStockForRestore = (productVersionId, variantId, ownerId) => {
     return {
-        text: `SELECT quantity FROM stock WHERE product_version_id = $1 AND owner_id = $2`,
-        values: [productVersionId, ownerId]
+        text: `SELECT quantity FROM stock WHERE product_version_id = $1 AND variant_id = $2 AND owner_id = $3`,
+        values: [productVersionId, variantId, ownerId]
     };
 };
 
@@ -244,10 +263,10 @@ exports.getStockForRestore = (productVersionId, ownerId) => {
 // Deduct Stock For Restoration
 // Source: dashboardController.js line 522
 // ============================================================
-exports.deductStockForRestore = (quantity, productVersionId, ownerId) => {
+exports.deductStockForRestore = (quantity, productVersionId, variantId, ownerId) => {
     return {
-        text: `UPDATE stock SET quantity = quantity - $1 WHERE product_version_id = $2 AND owner_id = $3`,
-        values: [quantity, productVersionId, ownerId]
+        text: `UPDATE stock SET quantity = quantity - $1 WHERE product_version_id = $2 AND variant_id = $3 AND owner_id = $4`,
+        values: [quantity, productVersionId, variantId, ownerId]
     };
 };
 

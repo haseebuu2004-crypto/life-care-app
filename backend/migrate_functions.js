@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION create_sale_atomic(
   p_customer_id UUID,
   p_sale_date DATE,
   p_recorded_by UUID,
-  p_items JSONB  -- array of {product_version_id, flavour_id, quantity, price_charged, standard_price_snap, vendor_price_snap}
+  p_items JSONB  -- array of {product_version_id, variant_id, quantity, price_charged, standard_price_snap, vendor_price_snap}
 )
 RETURNS UUID AS $$
 DECLARE
@@ -31,6 +31,7 @@ BEGIN
     UPDATE stock
     SET quantity = quantity - v_qty
     WHERE product_version_id = (v_item->>'product_version_id')::UUID
+      AND variant_id = (v_item->>'variant_id')::UUID
       AND owner_id = p_owner_id
       AND quantity >= v_qty;
 
@@ -42,12 +43,12 @@ BEGIN
 
     -- Insert sale item
     INSERT INTO sale_items (
-      sale_id, product_version_id, flavour_id, quantity,
+      sale_id, product_version_id, variant_id, quantity,
       price_charged, standard_price_snap, vendor_price_snap
     ) VALUES (
       v_sale_id,
       (v_item->>'product_version_id')::UUID,
-      NULLIF(v_item->>'flavour_id', '')::UUID,
+      (v_item->>'variant_id')::UUID,
       v_qty,
       (v_item->>'price_charged')::BIGINT,
       (v_item->>'standard_price_snap')::BIGINT,
@@ -80,11 +81,12 @@ BEGIN
   END IF;
 
   -- Restore stock for all items in this sale
-  FOR v_item IN (SELECT product_version_id, quantity FROM sale_items WHERE sale_id = p_sale_id)
+  FOR v_item IN (SELECT product_version_id, variant_id, quantity FROM sale_items WHERE sale_id = p_sale_id)
   LOOP
     UPDATE stock
     SET quantity = quantity + v_item.quantity
     WHERE product_version_id = v_item.product_version_id
+      AND variant_id = v_item.variant_id
       AND owner_id = p_owner_id;
   END LOOP;
 

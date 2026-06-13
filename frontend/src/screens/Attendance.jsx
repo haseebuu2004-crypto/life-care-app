@@ -134,7 +134,7 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                     </div>
                     <div style={{ flex: 1 }}>
                         <label style={{ display: 'block', fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Select Date</label>
-                        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{ padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 16, width: '100%', maxWidth: 200, outline: 'none' }} />
+                        <input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={e=>setDate(e.target.value)} style={{ padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 16, width: '100%', maxWidth: 200, outline: 'none' }} />
                     </div>
                 </div>
                 <div className="card" style={{ borderLeft: '4px solid var(--primary-color)' }}>

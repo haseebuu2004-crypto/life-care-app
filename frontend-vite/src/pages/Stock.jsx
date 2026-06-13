@@ -7,15 +7,15 @@ import { useDebounce } from '../hooks/useDebounce';
 import { usePermissions } from '../hooks/usePermissions';
 
 const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, updateStockPrice, deleteStock }) => {
-    const [tempQty, setTempQty] = useState(item.qty.toString());
-    const [tempPrice, setTempPrice] = useState(item.sp.toString());
-    const isLowStock = item.qty <= 5;
+    const [tempQty, setTempQty] = useState((item?.qty ?? 0).toString());
+    const [tempPrice, setTempPrice] = useState((item?.sp ?? 0).toString());
+    const isLowStock = (item?.qty ?? 0) <= 5;
 
     // Keep tempQty in sync with actual qty when it changes from outside
     useEffect(() => {
-        setTempQty(item.qty.toString());
-        setTempPrice(item.sp.toString());
-    }, [item.qty, item.sp]);
+        setTempQty((item?.qty ?? 0).toString());
+        setTempPrice((item?.sp ?? 0).toString());
+    }, [item?.qty, item?.sp]);
 
     const handleQtyChange = (e) => {
         setTempQty(e.target.value);
@@ -27,26 +27,26 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, up
 
     const commitQty = (newQtyStr) => {
         let val = parseInt(newQtyStr);
-        if (isNaN(val) || val < 0) val = item.qty;
+        if (isNaN(val) || val < 0) val = item?.qty ?? 0;
         setTempQty(val.toString());
         
-        if (val !== item.qty) {
+        if (val !== item?.qty) {
             updateStockQuantity(item.id, val).catch(err => {
                 useStore.getState().showToast(err.message, 'error');
-                setTempQty(item.qty.toString());
+                setTempQty((item?.qty ?? 0).toString());
             });
         }
     };
 
     const commitPrice = (newPriceStr) => {
         let val = Number(newPriceStr);
-        if (isNaN(val) || val < 0) val = item.sp;
+        if (isNaN(val) || val < 0) val = item?.sp ?? 0;
         setTempPrice(val.toString());
         
-        if (val !== item.sp) {
+        if (val !== item?.sp) {
             updateStockPrice(item.id, val).catch(err => {
                 useStore.getState().showToast(err.message, 'error');
-                setTempPrice(item.sp.toString());
+                setTempPrice((item?.sp ?? 0).toString());
             });
         }
     };

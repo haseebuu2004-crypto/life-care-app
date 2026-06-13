@@ -1,12 +1,14 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from "@/utils/routerShim";
+import { useNavigate, Navigate, useSearchParams } from "@/utils/routerShim";
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff } from 'lucide-react';
 
 export function Login() {
     const { login, forgotPassword, user } = useAuth();
     const nav = useNavigate();
+    const searchParams = useSearchParams();
+    const returnTo = searchParams.get('returnTo');
     
     // UI Flow State: 1=Login, 2=ForgotPwd
     const [step, setStep] = useState(1);
@@ -81,7 +83,11 @@ export function Login() {
         try {
             setLoading(true); setErrorMsg(''); setSuccessMsg('');
             await login(email, password);
-            nav('/');
+            if (returnTo) {
+                nav(returnTo);
+            } else {
+                nav('/');
+            }
         } catch (error) {
             if (error.response?.status === 429) {
                 const retrySecs = parseInt(error.response.headers?.['retry-after'], 10);

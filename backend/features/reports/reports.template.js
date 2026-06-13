@@ -5,7 +5,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
     if (type === 'sales') {
         const rows = data.rows.map((r, i) => `
             <tr>
-                <td>${r.sale_date.toISOString().split('T')[0]}</td>
+                <td>${r.sale_date.toLocaleDateString('en-CA')}</td>
                 <td>${r.customer}</td>
                 <td>${r.product}</td>
                 <td style="text-align: center;">${r.quantity}</td>
@@ -16,7 +16,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
 
         content = `
             <div class="summary-box">
-                <h2>Total Revenue (Last 100 Sales)</h2>
+                <h2>Total Revenue</h2>
                 <div class="amount">₹${data.total.toFixed(2)}</div>
             </div>
             <table>
@@ -39,7 +39,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
     else if (type === 'attendance') {
         const rows = data.rows.map((r, i) => `
             <tr>
-                <td>${r.attendance_date.toISOString().split('T')[0]}</td>
+                <td>${r.attendance_date.toLocaleDateString('en-CA')}</td>
                 <td>${r.name}</td>
                 <td><span class="badge ${r.type.toLowerCase()}">${r.type}</span></td>
                 <td style="text-align: right; font-weight: bold;">₹${(r.shake_amount / 100).toFixed(2)}</td>
@@ -48,7 +48,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
 
         content = `
             <div class="summary-box">
-                <h2>Total Shake Profit (Last 100 Records)</h2>
+                <h2>Total Shake Profit</h2>
                 <div class="amount">₹${data.profit.toFixed(2)}</div>
             </div>
             <table>
@@ -71,7 +71,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
         if (data.salesList && data.salesList.length > 0) {
             const rows = data.salesList.map((r) => `
                 <tr>
-                    <td>${r.sale_date.toISOString().split('T')[0]}</td>
+                    <td>${r.sale_date.toLocaleDateString('en-CA')}</td>
                     <td>${r.customer}</td>
                     <td>${r.product}</td>
                     <td style="text-align: center;">${r.quantity}</td>
@@ -101,7 +101,7 @@ exports.generateReportHTML = (type, data, clubName = '') => {
         if (data.attendanceList && data.attendanceList.length > 0) {
             const rows = data.attendanceList.map((r) => `
                 <tr>
-                    <td>${r.attendance_date.toISOString().split('T')[0]}</td>
+                    <td>${r.attendance_date.toLocaleDateString('en-CA')}</td>
                     <td>${r.name}</td>
                     <td><span class="badge ${r.type.toLowerCase()}">${r.type}</span></td>
                     <td style="text-align: right; font-weight: bold;">₹${(r.shake_amount / 100).toFixed(2)}</td>

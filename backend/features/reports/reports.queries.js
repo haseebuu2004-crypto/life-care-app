@@ -5,14 +5,14 @@ exports.getPDFSales = (ownerId, dateFilterStr) => {
     return {
         text: `
             SELECT 
-                s.sale_date, c.name as customer, p.name as product, 
+                s.sale_date, COALESCE(c.name, 'Unknown Customer') as customer, COALESCE(p.name, 'Unknown Product') as product, 
                 si.quantity, si.price_charged,
-                ((si.price_charged - si.vendor_price_snap) * si.quantity) as item_profit
+                ((si.price_charged::numeric - si.vendor_price_snap::numeric) * si.quantity) as item_profit
             FROM sales s
-            JOIN customers c ON s.customer_id = c.id
+            LEFT JOIN customers c ON s.customer_id = c.id
             JOIN sale_items si ON si.sale_id = s.id
-            JOIN product_versions pv ON si.product_version_id = pv.id
-            JOIN products p ON pv.product_id = p.id
+            LEFT JOIN product_versions pv ON si.product_version_id = pv.id
+            LEFT JOIN products p ON pv.product_id = p.id
             WHERE s.owner_id = $1 AND s.is_deleted = false
             ${dateFilterStr}
             ORDER BY s.sale_date DESC
@@ -27,9 +27,9 @@ exports.getPDFSales = (ownerId, dateFilterStr) => {
 exports.getPDFAttendance = (ownerId, dateFilterStr) => {
     return {
         text: `
-            SELECT a.attendance_date, c.name, a.type, a.shake_amount
+            SELECT a.attendance_date, COALESCE(c.name, 'Unknown Customer') as name, a.type, a.shake_amount
             FROM attendance a
-            JOIN customers c ON a.customer_id = c.id
+            LEFT JOIN customers c ON a.customer_id = c.id
             WHERE a.owner_id = $1 AND a.is_deleted = false
             ${dateFilterStr}
             ORDER BY a.attendance_date DESC
@@ -45,8 +45,8 @@ exports.getPDFSummarySalesStats = (ownerId, dateFilterStr) => {
     return {
         text: `
             SELECT 
-                SUM(si.price_charged * si.quantity) as rev, 
-                SUM((si.price_charged - si.vendor_price_snap) * si.quantity) as prof 
+                SUM(si.price_charged::numeric * si.quantity) as rev, 
+                SUM((si.price_charged::numeric - si.vendor_price_snap::numeric) * si.quantity) as prof 
             FROM sales s
             JOIN sale_items si ON s.id = si.sale_id
             WHERE s.owner_id = $1 AND s.is_deleted = false
@@ -161,9 +161,16 @@ exports.insertProductVersion = (productId, vendorPrice, createdBy) => {
     };
 };
 
-exports.insertInitialStock = (versionId, ownerId, quantity, vendorPrice, addedBy) => {
+exports.insertVariant = (productId, ownerId, name) => {
     return {
-        text: `INSERT INTO stock (product_version_id, owner_id, quantity, vendor_price_snap, added_by) VALUES ($1, $2, $3, $4, $5)`,
-        values: [versionId, ownerId, quantity, vendorPrice, addedBy]
+        text: `INSERT INTO variants (product_id, owner_id, name) VALUES ($1, $2, $3) RETURNING id`,
+        values: [productId, ownerId, name]
+    };
+};
+
+exports.insertInitialStock = (versionId, variantId, ownerId, quantity, vendorPrice, addedBy) => {
+    return {
+        text: `INSERT INTO stock (product_version_id, variant_id, owner_id, quantity, vendor_price_snap, added_by) VALUES ($1, $2, $3, $4, $5, $6)`,
+        values: [versionId, variantId, ownerId, quantity, vendorPrice, addedBy]
     };
 };

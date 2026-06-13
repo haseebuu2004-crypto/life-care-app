@@ -26,12 +26,12 @@ class MasterService {
         return res.rows.map(s => {
             let status = 'Ended';
             if (!s.invalidated_at && new Date(s.expires_at) > new Date()) {
-                const ageMins = (Date.now() - new Date(s.last_activity_at).getTime()) / 60000;
+                const ageMins = (Date.now() - new Date(s.last_seen_at).getTime()) / 60000;
                 status = ageMins < 5 ? 'Online' : 'Idle';
             }
             return {
                 id: s.id, email: s.email, role: s.role, ipAddress: s.ip_address,
-                device: s.device_info, loginTime: s.created_at, lastActivity: s.last_activity_at, status
+                device: s.device_info, loginTime: s.created_at, lastActivity: s.last_seen_at, status
             };
         });
     }

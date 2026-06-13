@@ -1,31 +1,37 @@
 "use client";
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { X, Package } from 'lucide-react';
 import { formatRupees } from '../utils/currency';
 
 export function AddStockModal({ onClose }) {
-    const { addStock, products } = useStore();
+    const { addStock, inventoryEntities, fetchInventoryEntities } = useStore();
     
-    const [selectedVariantId, setSelectedVariantId] = useState('');
+    const [selectedInventoryId, setSelectedInventoryId] = useState('');
     const [qty, setQty] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Only show products that are active (enabled)
-    const activeProducts = useMemo(() => {
-        return (products || []).filter(p => p.is_active === true);
-    }, [products]);
+    useEffect(() => {
+        if (!inventoryEntities || inventoryEntities.length === 0) {
+            fetchInventoryEntities();
+        }
+    }, [inventoryEntities, fetchInventoryEntities]);
 
-    const selectedProduct = useMemo(() => {
-        if (!selectedVariantId) return null;
-        return activeProducts.find(p => p.version_id === selectedVariantId);
-    }, [selectedVariantId, activeProducts]);
+    // Only show entities that are active
+    const activeEntities = useMemo(() => {
+        return (inventoryEntities || []).filter(e => e.isActive === true);
+    }, [inventoryEntities]);
+
+    const selectedEntity = useMemo(() => {
+        if (!selectedInventoryId) return null;
+        return activeEntities.find(e => e.inventoryId === selectedInventoryId);
+    }, [selectedInventoryId, activeEntities]);
 
     const onSubmit = async (e) => {
         e.preventDefault();
         
-        if (!selectedVariantId) {
-            useStore.getState().showToast("Please select a product", "error");
+        if (!selectedInventoryId) {
+            useStore.getState().showToast("Please select an inventory entity", "error");
             return;
         }
 
@@ -37,10 +43,16 @@ export function AddStockModal({ onClose }) {
 
         try {
             setLoading(true);
-            await addStock({
-                variantId: selectedVariantId,
+            const payload = {
+                inventoryId: selectedInventoryId,
                 quantity: quantity
-            });
+            };
+            console.log("---- DEBUG SUBMIT ----");
+            console.log("selectedEntity:", selectedEntity);
+            console.log("payload to send:", payload);
+            console.log("----------------------");
+            
+            await addStock(payload);
             useStore.getState().showToast("Stock added successfully", "success");
             onClose();
         } catch (err) {
@@ -59,43 +71,40 @@ export function AddStockModal({ onClose }) {
                     <button type="button" onClick={onClose} className="btn icon-btn"><X size={20}/></button>
                 </div>
 
-                {activeProducts.length === 0 ? (
+                {activeEntities.length === 0 ? (
                     <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-light)' }}>
                         <Package size={48} style={{ opacity: 0.2, margin: '0 auto 10px' }} />
-                        <p>No active products found.</p>
+                        <p>No active inventory entities found.</p>
                         <p style={{ fontSize: 13, marginTop: 10 }}>Please define and enable products in the <strong>Product Mgr</strong> first.</p>
                     </div>
                 ) : (
                     <form onSubmit={onSubmit}>
                         <div className="form-group">
-                            <label>Select Product</label>
+                            <label>Select Inventory Entity</label>
                             <select 
-                                value={selectedVariantId}
-                                onChange={(e) => setSelectedVariantId(e.target.value)}
+                                value={selectedInventoryId}
+                                onChange={(e) => setSelectedInventoryId(e.target.value)}
                                 required
                                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                             >
-                                <option value="" disabled>-- Select a product --</option>
-                                {activeProducts.map(p => {
-                                    const firstFlavour = p.flavours && p.flavours.length > 0 ? p.flavours[0].name : 'Base';
-                                    return (
-                                        <option key={p.version_id} value={p.version_id}>
-                                            {p.name} {firstFlavour !== 'Base' ? `(${firstFlavour})` : ''} - {formatRupees(p.vendor_price * 100)} ({p.vp} VP)
-                                        </option>
-                                    );
-                                })}
+                                <option value="" disabled>-- Select an entity --</option>
+                                {activeEntities.map(e => (
+                                    <option key={e.inventoryId} value={e.inventoryId}>
+                                        {e.displayName} - {formatRupees(e.vendorPrice * 100)} ({e.vp} VP)
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
-                        {selectedProduct && (
+                        {selectedEntity && (
                             <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                 <div>
                                     <span style={{ fontSize: 12, color: '#64748b', display: 'block' }}>Vendor Price</span>
-                                    <strong>{formatRupees(selectedProduct.vendor_price * 100)}</strong>
+                                    <strong>{formatRupees(selectedEntity.vendorPrice * 100)}</strong>
                                 </div>
                                 <div>
                                     <span style={{ fontSize: 12, color: '#64748b', display: 'block' }}>Unit V.P</span>
-                                    <strong>{selectedProduct.vp}</strong>
+                                    <strong>{selectedEntity.vp}</strong>
                                 </div>
                             </div>
                         )}
@@ -103,30 +112,40 @@ export function AddStockModal({ onClose }) {
                         <div className="form-group">
                             <label>Quantity to Add</label>
                             <input 
-                                type="number" min="1"
+                                type="number" 
+                                min="1"
+                                step="1"
                                 value={qty} 
-                                onChange={e=>setQty(e.target.value)} 
+                                onKeyDown={(e) => {
+                                    if (e.key === '.' || e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                        e.preventDefault();
+                                    }
+                                }}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    setQty(isNaN(val) ? '' : val);
+                                }}
                                 required 
                                 placeholder="Enter quantity"
                             />
                         </div>
 
-                        {selectedProduct && qty > 0 && (
+                        {selectedEntity && qty > 0 && (
                             <div style={{ background: '#eff6ff', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #bfdbfe' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                                     <span style={{ color: '#1e3a8a', fontWeight: 500 }}>Total Value:</span>
-                                    <strong style={{ color: '#1e3a8a', fontSize: '18px' }}>{formatRupees(selectedProduct.vendor_price * qty * 100)}</strong>
+                                    <strong style={{ color: '#1e3a8a', fontSize: '18px' }}>{formatRupees(selectedEntity.vendorPrice * qty * 100)}</strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span style={{ color: '#1e3a8a', fontWeight: 500 }}>Total V.P:</span>
-                                    <strong style={{ color: '#1e3a8a' }}>{(selectedProduct.vp * qty).toFixed(2)}</strong>
+                                    <strong style={{ color: '#1e3a8a' }}>{(selectedEntity.vp * qty).toFixed(2)}</strong>
                                 </div>
                             </div>
                         )}
 
                         <div className="flex justify-between" style={{ marginTop: 20 }}>
                             <button type="button" onClick={onClose} className="btn btn-outline" disabled={loading}>Cancel</button>
-                            <button type="submit" className="btn btn-primary" disabled={loading || !selectedVariantId || qty <= 0}>
+                            <button type="submit" className="btn btn-primary" disabled={loading || !selectedInventoryId || qty <= 0}>
                                 {loading ? 'Saving...' : 'Add Stock'}
                             </button>
                         </div>

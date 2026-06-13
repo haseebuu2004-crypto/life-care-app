@@ -57,7 +57,7 @@ exports.getExportCustomers = (ownerId) => ({
 });
 
 exports.getExportAttendance = (ownerId) => ({
-    text: `SELECT id, owner_id, customer_id, attendance_date, type, (shake_amount / 100.0)::float as shake_amount, recorded_by, created_at, is_deleted, deleted_at FROM attendance WHERE owner_id = $1`,
+    text: `SELECT id, owner_id, customer_id, attendance_date, type, (shake_amount::numeric / 100.0)::float as shake_amount, recorded_by, created_at, is_deleted, deleted_at FROM attendance WHERE owner_id = $1`,
     values: [ownerId]
 });
 
@@ -67,7 +67,7 @@ exports.getExportSales = (ownerId) => ({
 });
 
 exports.getExportSaleItems = (ownerId) => ({
-    text: `SELECT si.id, si.sale_id, si.product_version_id, si.flavour_id, si.quantity, (si.price_charged / 100.0)::float as price_charged, (si.standard_price_snap / 100.0)::float as standard_price_snap, (si.vendor_price_snap / 100.0)::float as vendor_price_snap FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1`,
+    text: `SELECT si.id, si.sale_id, si.product_version_id, si.variant_id, si.quantity, (si.price_charged::numeric / 100.0)::float as price_charged, (si.standard_price_snap::numeric / 100.0)::float as standard_price_snap, (si.vendor_price_snap::numeric / 100.0)::float as vendor_price_snap FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.owner_id = $1`,
     values: [ownerId]
 });
 
@@ -77,17 +77,17 @@ exports.getExportProducts = (ownerId) => ({
 });
 
 exports.getExportProductVersions = (ownerId) => ({
-    text: `SELECT pv.id, pv.product_id, (pv.vendor_price / 100.0)::float as vendor_price, pv.is_active, pv.effective_from, pv.effective_to, pv.created_by FROM product_versions pv JOIN products p ON pv.product_id = p.id WHERE p.owner_id = $1`,
+    text: `SELECT pv.id, pv.product_id, (pv.vendor_price::numeric / 100.0)::float as vendor_price, pv.volume_points, pv.version_label, pv.is_active, pv.effective_from, pv.effective_to, pv.created_by FROM product_versions pv JOIN products p ON pv.product_id = p.id WHERE p.owner_id = $1`,
     values: [ownerId]
 });
 
-exports.getExportFlavours = (ownerId) => ({
-    text: `SELECT id, product_id, owner_id, name, is_active, created_at FROM flavours WHERE owner_id = $1`,
+exports.getExportVariants = (ownerId) => ({
+    text: `SELECT id, product_version_id, owner_id, name, is_active, created_at, sku, low_stock_threshold, alert_enabled FROM variants WHERE owner_id = $1`,
     values: [ownerId]
 });
 
 exports.getExportStock = (ownerId) => ({
-    text: `SELECT id, owner_id, product_version_id, quantity, (vendor_price_snap / 100.0)::float as vendor_price_snap, added_at, added_by FROM stock WHERE owner_id = $1`,
+    text: `SELECT id, owner_id, product_version_id, variant_id, quantity, (vendor_price_snap::numeric / 100.0)::float as vendor_price_snap, added_at, added_by FROM stock WHERE owner_id = $1`,
     values: [ownerId]
 });
 
@@ -96,22 +96,22 @@ exports.getExportStock = (ownerId) => ({
 // ============================================================
 exports.getSaleItemsSnapshot = (ownerId) => ({
     text: `
-        SELECT si.product_version_id, SUM(si.quantity) as qty
+        SELECT si.variant_id, SUM(si.quantity) as qty
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         WHERE s.owner_id = $1 AND s.is_deleted = false
-        GROUP BY si.product_version_id
+        GROUP BY si.variant_id
     `,
     values: [ownerId]
 });
 
-exports.updateStockDifferential = (diff, pvId, ownerId) => ({
+exports.updateStockDifferential = (diff, variantId, ownerId) => ({
     text: `
         UPDATE stock 
         SET quantity = quantity - $1 
-        WHERE product_version_id = $2 AND owner_id = $3
+        WHERE variant_id = $2 AND owner_id = $3
     `,
-    values: [diff, pvId, ownerId]
+    values: [diff, variantId, ownerId]
 });
 
 // ============================================================

@@ -6,25 +6,31 @@ exports.getStock = async (req, res) => {
         const data = await stockService.getStock(ownerId);
         res.json({ success: true, data });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Get Stock Error:", error);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ error: "Internal server error" });
     }
 };
 
 exports.addStock = async (req, res) => {
     try {
         const ownerId = req.user.owner_id || req.user.id;
-        const { variantId, quantity } = req.body; 
+        const { inventoryId, quantity } = req.body; 
         
-        await stockService.addStock(ownerId, variantId, quantity, req.user.id);
+        await stockService.addStock(ownerId, inventoryId, quantity, req.user.id);
         
         res.json({ success: true, message: "Stock added successfully" });
     } catch (error) {
-        if (error.message === "Product version not found or inactive") {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+        if (error.message === "Variant not found or product version is inactive") {
             return res.status(404).json({ success: false, message: error.message });
         }
         console.error("Add Stock Error:", error);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ error: "Internal server error" });
     }
 };
 
@@ -38,11 +44,14 @@ exports.updateStockQuantity = async (req, res) => {
         
         res.json({ success: true, message: "Stock updated successfully." });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         if (error.message === "Stock not found") {
             return res.status(404).json({ success: false, message: error.message });
         }
         console.error("Update Stock Error:", error);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ error: "Internal server error" });
     }
 };
 
@@ -67,7 +76,10 @@ exports.deleteStock = async (req, res) => {
         
         res.json({ success: true, message: "Stock deleted." });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Delete Stock Error:", error);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ error: "Internal server error" });
     }
 };

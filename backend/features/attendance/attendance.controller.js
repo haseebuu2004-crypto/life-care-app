@@ -6,9 +6,10 @@ exports.getAttendance = async (req, res) => {
         
         const result = await attendanceService.getAttendance(ownerId, req.user.role, req.user.id);
         
-        let formatted = result.rows.map(r => ({
+        const rows = Array.isArray(result) ? result : (result?.rows || []);
+        let formatted = rows.map(r => ({
             id: r.id,
-            date: r.date || (r.attendance_date ? new Date(r.attendance_date).toISOString().split('T')[0] : ''),
+            date: r.date || (r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('en-CA') : ''),
             customer_id: r.customer_id,
             name: r.customer_name || r.name,
             status: r.type, 
@@ -18,6 +19,9 @@ exports.getAttendance = async (req, res) => {
         
         res.json({ success: true, data: formatted });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Get Attendance Error:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
@@ -32,6 +36,9 @@ exports.markAttendance = async (req, res) => {
         
         res.json({ success: true, message: 'Attendance logged successfully' });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         if (error.message === "Attendance already marked for this member today.") {
             return res.status(400).json({ success: false, message: error.message });
         }
@@ -49,6 +56,9 @@ exports.deleteAttendance = async (req, res) => {
         
         res.json({ success: true, message: "Attendance deleted" });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         if (error.message === "You can only delete attendance you recorded") {
             return res.status(403).json({ success: false, message: error.message });
         }

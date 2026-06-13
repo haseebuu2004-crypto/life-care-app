@@ -5,33 +5,34 @@ import useStore from '../store/useStore';
 
 const AuthContext = createContext();
 
-const setStorage = (key, val) => {
-    if (typeof window !== 'undefined') localStorage.setItem(key, val);
-};
-const getStorage = (key) => {
-    if (typeof window !== 'undefined') return localStorage.getItem(key);
-    return null;
-};
-const removeStorage = (key) => {
-    if (typeof window !== 'undefined') localStorage.removeItem(key);
-};
-
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const saved = getStorage('user');
-            if (saved) {
-                try {
-                    setUser(JSON.parse(saved));
-                } catch (e) {
-                    removeStorage('user');
+        const verifySession = async () => {
+            try {
+                const { data } = await api.get('/auth/session');
+                if (data.success && data.user) {
+                    setUser(data.user);
+                    useStore.setState({ user: data.user });
+                } else {
+                    setUser(null);
+                    useStore.setState({ user: null });
                 }
+            } catch (err) {
+                setUser(null);
+                useStore.setState({ user: null });
+            } finally {
+                setLoading(false);
             }
+        };
+
+        if (typeof window !== 'undefined') {
+            verifySession();
+        } else {
+            setLoading(false);
         }
-        setLoading(false);
     }, []);
 
     const login = async (email, password) => {
@@ -41,9 +42,9 @@ export function AuthProvider({ children }) {
             
             // Note: Tokens are no longer stored in localStorage (HttpOnly cookies now)
             // But we keep user details for UI rendering
-            const loggedInUser = { id: data.user.id, email: data.user.email, role: data.user.role, force_password_change: data.user.force_password_change };
-            setStorage('user', JSON.stringify(loggedInUser));
+            const loggedInUser = { id: data.user.id, email: data.user.email, username: data.user.username, role: data.user.role, force_password_change: data.user.force_password_change };
             setUser(loggedInUser);
+            useStore.setState({ user: loggedInUser });
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Login failed';
             const err = new Error(msg);
@@ -54,13 +55,33 @@ export function AuthProvider({ children }) {
 
     const logout = async () => {
         try { await api.post('/auth/logout'); } catch (_) {}
-        removeStorage('user');
         setUser(null);
         useStore.getState().resetStore();
+        useStore.setState({ user: null });
+    };
+
+    const forgotPassword = async (email) => {
+        try {
+            const { data } = await api.post('/auth/forgot-password', { email });
+            return data;
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to send reset link';
+            throw new Error(msg);
+        }
+    };
+
+    const resetPassword = async (token, newPassword) => {
+        try {
+            const { data } = await api.post('/auth/reset-password', { token, newPassword });
+            return data;
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to reset password';
+            throw new Error(msg);
+        }
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, loading, setUser }}>
+        <AuthContext.Provider value={{ user, login, logout, forgotPassword, resetPassword, loading, setUser }}>
             {children}
         </AuthContext.Provider>
     );

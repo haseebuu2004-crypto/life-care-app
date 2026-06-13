@@ -22,6 +22,9 @@ exports.exportData = async (req, res) => {
         res.send(buffer);
         await audit.logAction(req.user.id, 'EXPORT_PDF', type, null);
     } catch (e) {
+        if (e.message && e.message.includes('Unauthorized')) {
+            if (!res.headersSent) return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Export Error:", e);
         if (!res.headersSent) res.status(500).json({ success: false, message: "Export failed" });
     }
@@ -49,6 +52,9 @@ exports.importCSV = async (req, res) => {
 
         res.json({ success: true, imported: result.importedCount, message: `Bulk import for ${type} successful.` });
     } catch (e) {
+        if (e.message && e.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("CSV Import Error:", e);
         res.status(500).json({ success: false, message: e.message || "Import failed. Transaction rolled back." });
     }

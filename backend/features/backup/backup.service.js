@@ -23,7 +23,7 @@ class BackupService {
             case 'products':
                 data.products = (await pool.query(queries.getExportProducts(ownerId).text, queries.getExportProducts(ownerId).values)).rows;
                 data.product_versions = (await pool.query(queries.getExportProductVersions(ownerId).text, queries.getExportProductVersions(ownerId).values)).rows;
-                data.flavours = (await pool.query(queries.getExportFlavours(ownerId).text, queries.getExportFlavours(ownerId).values)).rows;
+                data.variants = (await pool.query(queries.getExportVariants(ownerId).text, queries.getExportVariants(ownerId).values)).rows;
                 data.stock = (await pool.query(queries.getExportStock(ownerId).text, queries.getExportStock(ownerId).values)).rows;
                 break;
             case 'full':
@@ -33,7 +33,7 @@ class BackupService {
                 data.sale_items = (await pool.query(queries.getExportSaleItems(ownerId).text, queries.getExportSaleItems(ownerId).values)).rows;
                 data.products = (await pool.query(queries.getExportProducts(ownerId).text, queries.getExportProducts(ownerId).values)).rows;
                 data.product_versions = (await pool.query(queries.getExportProductVersions(ownerId).text, queries.getExportProductVersions(ownerId).values)).rows;
-                data.flavours = (await pool.query(queries.getExportFlavours(ownerId).text, queries.getExportFlavours(ownerId).values)).rows;
+                data.variants = (await pool.query(queries.getExportVariants(ownerId).text, queries.getExportVariants(ownerId).values)).rows;
                 data.stock = (await pool.query(queries.getExportStock(ownerId).text, queries.getExportStock(ownerId).values)).rows;
                 break;
             default:
@@ -117,7 +117,7 @@ class BackupService {
 
     generateFileName(type, format, clubName = '') {
         const date = new Date();
-        const dateStr = date.toISOString().split('T')[0].replace(/-/g, '_');
+        const dateStr = date.toLocaleDateString('en-CA').replace(/-/g, '_');
         const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '');
         
         let prefix = 'backup';

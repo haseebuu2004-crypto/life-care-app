@@ -24,10 +24,11 @@ const getErrorMsg = (error, defaultMsg) => {
 };
 
 const useStore = create((set, get) => ({
+    inventoryEntities: [],
     products: [],
     stock: [],
     sales: [],
-    user: typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem("user")) || null) : null,
+    user: null,
     attendance: [],
     users: [],
     customers: [],
@@ -46,6 +47,7 @@ const useStore = create((set, get) => ({
 
     resetStore: () => {
         set({
+            inventoryEntities: [],
             products: [],
             stock: [],
             sales: [],
@@ -64,6 +66,28 @@ const useStore = create((set, get) => ({
             const p = await api.get('/products');
             set({ products: extract(p) || [] });
         } catch (error) { console.error(error); }
+    },
+    fetchProducts: async () => {
+        try {
+            const p = await api.get('/products');
+            set({ products: extract(p) || [] });
+        } catch (error) { console.error(error); }
+    },
+    fetchInventoryEntities: async () => {
+        try {
+            const res = await api.get('/inventory/entities');
+            set({ inventoryEntities: extract(res) || [] });
+        } catch (error) { console.error(error); }
+    },
+    updateInventoryEntity: async (variantId, payload) => {
+        try {
+            const res = await api.put(`/inventory/entities/${variantId}`, payload);
+            await get().fetchInventoryEntities();
+            await get().fetchDashboardStats();
+            return extract(res);
+        } catch (error) {
+            throw new Error(getErrorMsg(error, 'Failed to update entity'));
+        }
     },
     fetchStock: async () => {
         try {
@@ -94,6 +118,7 @@ const useStore = create((set, get) => ({
             const params = new URLSearchParams();
             if (start) params.append('startDate', start);
             if (end) params.append('endDate', end);
+            params.append('t', Date.now()); // Cache buster
             const query = params.toString() ? `?${params.toString()}` : '';
             const ds = await api.get(`/dashboard/stats${query}`);
             set({ dashboardStats: extract(ds) || null });
@@ -151,15 +176,14 @@ const useStore = create((set, get) => ({
     fetchData: async () => {
         set({ isLoading: true });
         try {
-            await Promise.all([
-                get().fetchProducts(),
-                get().fetchStock(),
-                get().fetchSales(),
-                get().fetchAttendance(),
-                get().fetchCustomers(),
-                get().fetchDashboardStats(),
-                get().fetchUnreadCount()
-            ]);
+            await get().fetchProducts();
+            await get().fetchStock();
+            await get().fetchInventoryEntities();
+            await get().fetchSales();
+            await get().fetchAttendance();
+            await get().fetchCustomers();
+            await get().fetchDashboardStats();
+            await get().fetchUnreadCount();
         } catch (error) {
             console.error('fetchData error:', error);
             get().showToast('Failed to load data. Please refresh.', 'error');
@@ -216,7 +240,7 @@ const useStore = create((set, get) => ({
             const res = await api.patch(`/stock/${id}`, { quantity });
             // Update local state without full refresh for smooth UI
             set((state) => ({
-                stock: state.stock.map(s => s.stock_id === id ? { ...s, qty: quantity } : s)
+                inventoryEntities: state.inventoryEntities.map(s => s.inventoryId === id ? { ...s, stock: quantity } : s)
             }));
             get().fetchDashboardStats().catch(console.error);
             return extract(res);
@@ -242,7 +266,7 @@ const useStore = create((set, get) => ({
     deleteStock: async (id) => {
         try {
             const res = await api.delete(`/stock/${id}`);
-            get().fetchData().catch(console.error);
+            get().fetchInventoryEntities().catch(console.error);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete stock';

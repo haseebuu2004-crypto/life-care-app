@@ -46,7 +46,7 @@ export function ResetPassword() {
     return (
         <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9fafb' }}>
             <div className="card" style={{ width: 420, padding: '40px 30px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderRadius: '12px', backgroundColor: '#fff' }}>
-                <h2 style={{ textAlign: 'center', marginBottom: 30, fontSize: '24px', fontWeight: '700', color: '#111827' }}>🥗 {savedClubName}</h2>
+                <h2 style={{ textAlign: 'center', marginBottom: 30, fontSize: '24px', fontWeight: '700', color: '#111827' }}>🥗 {typeof window !== 'undefined' ? localStorage.getItem('clubName') || 'Life Care System' : 'Life Care System'}</h2>
 
                 {errorMsg && <div style={{ color: '#dc2626', backgroundColor: '#fee2e2', padding: '10px', borderRadius: '6px', marginBottom: '20px', textAlign: 'center', fontSize: '14px' }}>{errorMsg}</div>}
                 {successMsg && <div style={{ color: '#16a34a', backgroundColor: '#dcfce7', padding: '10px', borderRadius: '6px', marginBottom: '20px', textAlign: 'center', fontSize: '14px' }}>{successMsg}</div>}

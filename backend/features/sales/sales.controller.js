@@ -34,8 +34,8 @@ exports.getSales = async (req, res) => {
                     totalProfit += profit;
                     return {
                         item_id: it.item_id,
-                        product_name: it.product_name,
-                        flavor: it.flavor || 'Base',
+                        inventoryId: it.variant_id,
+                        displayName: it.flavor && it.flavor !== 'Base' ? `${it.product_name} | ${it.flavor}` : it.product_name,
                         qty: it.qty,
                         sale_price: salePrice,
                         standard_price: standardPrice,
@@ -59,7 +59,11 @@ exports.getSales = async (req, res) => {
             res.json({ success: true, data: rows });
         }
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+        console.error("Get Sales Error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
@@ -76,16 +80,20 @@ exports.addSale = async (req, res) => {
         if (!customer_id) return res.status(400).json({ success: false, message: "Valid customer is required" });
         if (!items || items.length === 0) return res.status(400).json({ success: false, message: "No items provided" });
         
-        // Aggregate identical products based on product_version_id and flavour_id
+        // Aggregate identical products based on productVersionId and inventoryId
         const mergedItems = {};
         items.forEach(p => {
-            const key = `${p.product_version_id}_${p.flavour_id || 'none'}`;
+            const variantId = p.inventoryId;
+            const versionId = p.productVersionId;
+            if (!variantId || !versionId) throw new Error("Missing inventoryId or productVersionId in item");
+            
+            const key = `${versionId}_${variantId}`;
             if (mergedItems[key]) {
                 mergedItems[key].quantity += p.quantity;
             } else {
                 mergedItems[key] = {
-                    product_version_id: p.product_version_id,
-                    flavour_id: p.flavour_id,
+                    product_version_id: versionId,
+                    variant_id: variantId,
                     quantity: p.quantity,
                     price_charged: p.price_charged,
                     standard_price_snap: p.standard_price_snap,
@@ -99,11 +107,14 @@ exports.addSale = async (req, res) => {
         await salesService.addSaleTransaction(sale_date, customer_id, uniqueItems, ownerId, recordedBy);
         res.json({ success: true, data: null });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Add Sale Error:", error);
-        if (error.message.includes("Insufficient stock")) {
+        if (error.message && error.message.includes("Insufficient stock")) {
             return res.status(400).json({ success: false, message: "Insufficient stock to complete sale" });
         }
-        res.status(500).json({ success: false, message: "Server Error" });
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
@@ -123,9 +134,13 @@ exports.deleteSale = async (req, res) => {
         await salesService.deleteSaleTransaction(req.params.id, ownerId, req.user.id);
         res.json({ success: true, message: "Sale deleted successfully", data: null });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         if (error.message === "Sale not found or already deleted") {
             return res.status(404).json({ success: false, message: error.message });
         }
+        console.error("Delete Sale Error:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
 };
@@ -136,7 +151,10 @@ exports.deleteSaleItem = async (req, res) => {
         await salesService.deleteSaleItemTransaction(req.params.id, ownerId, req.user.id, req.user.role);
         res.json({ success: true, message: "Sale item deleted successfully", data: null });
     } catch (error) {
-        if (error.message.includes("not found") || error.message.includes("permission")) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+        if (error.message && (error.message.includes("not found") || error.message.includes("permission"))) {
             return res.status(400).json({ success: false, message: error.message });
         }
         console.error("Delete Sale Item Error:", error);

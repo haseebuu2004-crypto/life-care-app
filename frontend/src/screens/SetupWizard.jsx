@@ -90,8 +90,9 @@ export function SetupWizard({ onComplete }) {
             setLoading(true);
             const products = await api.get('/products');
             const p = products.data.data.find(x => x.name === productName);
-            if (p && p.version_id) {
-                await api.post('/stock', { variantId: p.version_id, quantity: stockQty });
+            if (p && p.flavours && p.flavours.length > 0) {
+                const variantId = p.flavours[0].id;
+                await api.post('/stock', { inventoryId: variantId, quantity: parseInt(stockQty, 10) });
                 await fetchStock();
             }
             setStep(4);

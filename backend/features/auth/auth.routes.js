@@ -15,5 +15,7 @@ router.post('/forgot-password', passwordResetLimiter, authController.forgotPassw
 router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
 router.post('/change-password', authenticateToken, authController.changePassword);
 router.get('/session', authenticateToken, authController.getSession);
+router.get('/sessions', authenticateToken, authController.getActiveSessions);
+router.delete('/sessions/:id', authenticateToken, authController.revokeSession);
 
 module.exports = router;

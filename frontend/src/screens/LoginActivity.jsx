@@ -98,8 +98,8 @@ export function LoginActivity() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((h, index) => (
-                                    <tr key={index}>
+                                {filtered.map((h) => (
+                                    <tr key={`${h.userEmail}-${h.loginTime}`}>
                                         <td><strong>{h.userEmail}</strong></td>
                                         <td style={{ color: 'var(--text-light)' }}>
                                             {h.userAgent?.includes('Mobile')

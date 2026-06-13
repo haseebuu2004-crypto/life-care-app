@@ -81,24 +81,77 @@ exports.forgotPassword = async (req, res) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ success: false, message: "Email required" });
 
-        res.json({ success: true, message: "If that email exists, reset instructions have been sent." });
+        const token = await authService.forgotPassword(email);
 
-        await authService.forgotPassword(email);
+        if (!token) {
+            return res.status(404).json({ success: false, message: "This email is not registered in our system." });
+        }
+
+        res.json({ success: true, message: "Password reset link has been successfully sent to your registered email." });
     } catch (error) {
         console.error("Forgot Password Error:", error);
+        res.status(500).json({ success: false, message: "Failed to process password reset request." });
     }
 };
 
 exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
+        if (!token || !newPassword) {
+            return res.status(400).json({ success: false, message: "Token and new password are required." });
+        }
         await authService.resetPassword(token, newPassword);
         res.json({ success: true, message: "Password has been reset successfully. You can now log in." });
     } catch (error) {
-        if (error.message.includes("Invalid")) {
-            return res.status(400).json({ success: false, message: error.message });
+        // Surface specific, user-safe errors from the service layer
+        const msg = error.message || '';
+        if (msg.includes("invalid") || msg.includes("expired") || msg.includes("already been used") || msg.includes("at least 8 characters")) {
+            return res.status(400).json({ success: false, message: msg });
         }
+        // Never expose internal details to the client
         console.error("Reset Password Error:", error);
+        res.status(500).json({ success: false, message: "An unexpected error occurred. Please try again." });
+    }
+};
+
+exports.getSession = async (req, res) => {
+    try {
+        // If authenticateToken passes, req.user is set
+        res.json({
+            success: true,
+            user: {
+                id: req.user.id,
+                email: req.user.email,
+                username: req.user.username || req.user.email.split('@')[0],
+                role: req.user.role,
+                force_password_change: req.user.force_password_change
+            }
+        });
+    } catch (error) {
+        console.error("Get Session Error:", error);
         res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+exports.getActiveSessions = async (req, res) => {
+    try {
+        const sessions = await authService.getActiveSessions(req.user.id, req.cookies?.session_token);
+        res.json({ success: true, sessions });
+    } catch (error) {
+        console.error("Get Active Sessions Error:", error);
+        res.status(500).json({ success: false, message: "Failed to retrieve sessions" });
+    }
+};
+
+exports.revokeSession = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id) return res.status(400).json({ success: false, message: "Session ID required" });
+        
+        await authService.revokeSession(req.user.id, id);
+        res.json({ success: true, message: "Session revoked successfully" });
+    } catch (error) {
+        console.error("Revoke Session Error:", error);
+        res.status(500).json({ success: false, message: "Failed to revoke session" });
     }
 };

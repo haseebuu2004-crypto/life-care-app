@@ -5,144 +5,175 @@ const queries = require('./reports.queries');
 const { generateReportHTML } = require('./reports.template');
 
 exports.generateReportData = async (ownerId, type, range) => {
-    let dateFilterSales = '';
-    let dateFilterAttendance = '';
-    
-    if (range === 'weekly') {
-        dateFilterSales = `AND s.sale_date >= CURRENT_DATE - INTERVAL '7 days'`;
-        dateFilterAttendance = `AND a.attendance_date >= CURRENT_DATE - INTERVAL '7 days'`;
-    } else if (range === 'monthly') {
-        dateFilterSales = `AND date_trunc('month', s.sale_date) = date_trunc('month', CURRENT_DATE)`;
-        dateFilterAttendance = `AND date_trunc('month', a.attendance_date) = date_trunc('month', CURRENT_DATE)`;
-    }
-
-    let data = { range };
-
-    if (type === 'sales') {
-        const q = queries.getPDFSales(ownerId, dateFilterSales);
-        const result = await db.query(q.text, q.values);
-
-        let total = 0;
-        result.rows.forEach(r => {
-            total += (r.price_charged * r.quantity) / 100;
-        });
-        data = { ...data, rows: result.rows, total };
-    } 
-    else if (type === 'attendance') {
-        const q = queries.getPDFAttendance(ownerId, dateFilterAttendance);
-        const result = await db.query(q.text, q.values);
-
-        let profit = 0;
-        result.rows.forEach(r => {
-            profit += r.shake_amount / 100;
-        });
-        data = { ...data, rows: result.rows, profit };
-    }
-    else if (type === 'summary') {
-        const sStatsQ = queries.getPDFSummarySalesStats(ownerId, dateFilterSales);
-        const aStatsQ = queries.getPDFSummaryAttendanceStats(ownerId, dateFilterAttendance);
-        const cCountQ = queries.getPDFSummaryCustomerCount(ownerId);
+    if (!ownerId) throw new Error('Unauthorized: missing ownerId');
+    try {
+        let dateFilterSales = '';
+        let dateFilterAttendance = '';
         
-        const salesRes = await db.query(sStatsQ.text, sStatsQ.values);
-        const attRes = await db.query(aStatsQ.text, aStatsQ.values);
-        const custRes = await db.query(cCountQ.text, cCountQ.values);
-        
-        const sListQ = queries.getPDFSales(ownerId, dateFilterSales);
-        const aListQ = queries.getPDFAttendance(ownerId, dateFilterAttendance);
-        
-        const salesList = await db.query(sListQ.text, sListQ.values);
-        const attendanceList = await db.query(aListQ.text, aListQ.values);
+        if (range === 'weekly') {
+            dateFilterSales = `AND s.sale_date >= CURRENT_DATE - INTERVAL '7 days'`;
+            dateFilterAttendance = `AND a.attendance_date >= CURRENT_DATE - INTERVAL '7 days'`;
+        } else if (range === 'monthly') {
+            dateFilterSales = `AND date_trunc('month', s.sale_date) = date_trunc('month', CURRENT_DATE)`;
+            dateFilterAttendance = `AND date_trunc('month', a.attendance_date) = date_trunc('month', CURRENT_DATE)`;
+        }
 
-        data = {
-            ...data,
-            sales: salesRes.rows[0],
-            attendance: attRes.rows[0],
-            customers: custRes.rows[0],
-            salesList: salesList.rows,
-            attendanceList: attendanceList.rows
-        };
+        let data = { range };
+
+        if (type === 'sales') {
+            const q = queries.getPDFSales(ownerId, dateFilterSales);
+            const result = await db.query(q.text, q.values);
+
+            let total = 0;
+            if (result && result.rows) {
+                result.rows.forEach(r => {
+                    total += (r.price_charged * r.quantity) / 100;
+                });
+                data = { ...data, rows: result.rows, total };
+            } else {
+                data = { ...data, rows: [], total: 0 };
+            }
+        } 
+        else if (type === 'attendance') {
+            const q = queries.getPDFAttendance(ownerId, dateFilterAttendance);
+            const result = await db.query(q.text, q.values);
+
+            let profit = 0;
+            if (result && result.rows) {
+                result.rows.forEach(r => {
+                    profit += r.shake_amount / 100;
+                });
+                data = { ...data, rows: result.rows, profit };
+            } else {
+                data = { ...data, rows: [], profit: 0 };
+            }
+        }
+        else if (type === 'summary') {
+            const sStatsQ = queries.getPDFSummarySalesStats(ownerId, dateFilterSales);
+            const aStatsQ = queries.getPDFSummaryAttendanceStats(ownerId, dateFilterAttendance);
+            const cCountQ = queries.getPDFSummaryCustomerCount(ownerId);
+            
+            const salesRes = await db.query(sStatsQ.text, sStatsQ.values);
+            const attRes = await db.query(aStatsQ.text, aStatsQ.values);
+            const custRes = await db.query(cCountQ.text, cCountQ.values);
+            
+            const sListQ = queries.getPDFSales(ownerId, dateFilterSales);
+            const aListQ = queries.getPDFAttendance(ownerId, dateFilterAttendance);
+            
+            const salesList = await db.query(sListQ.text, sListQ.values);
+            const attendanceList = await db.query(aListQ.text, aListQ.values);
+
+            data = {
+                ...data,
+                sales: (salesRes && salesRes.rows && salesRes.rows.length > 0) ? salesRes.rows[0] : null,
+                attendance: (attRes && attRes.rows && attRes.rows.length > 0) ? attRes.rows[0] : null,
+                customers: (custRes && custRes.rows && custRes.rows.length > 0) ? custRes.rows[0] : null,
+                salesList: (salesList && salesList.rows) ? salesList.rows : [],
+                attendanceList: (attendanceList && attendanceList.rows) ? attendanceList.rows : []
+            };
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('[ReportsService] generateReportData error:', error);
+        throw error;
     }
-    
-    return data;
 };
 
 exports.exportPDF = async (ownerId, type, range) => {
-    const data = await exports.generateReportData(ownerId, type, range);
-    
-    const confQ = queries.getClubName(ownerId);
-    const adminConfigRes = await db.query(confQ.text, confQ.values);
-    const clubName = adminConfigRes.rows[0]?.club_name || '';
+    if (!ownerId) throw new Error('Unauthorized: missing ownerId');
+    try {
+        const data = await exports.generateReportData(ownerId, type, range);
+        
+        const confQ = queries.getClubName(ownerId);
+        const adminConfigRes = await db.query(confQ.text, confQ.values);
+        const clubName = (adminConfigRes && adminConfigRes.rows && adminConfigRes.rows.length > 0) ? adminConfigRes.rows[0].club_name : '';
 
-    const html = generateReportHTML(type, data, clubName);
+        const html = generateReportHTML(type, data, clubName);
 
-    const browser = await puppeteer.launch({ 
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    
-    const pdfBuffer = await page.pdf({ 
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', right: '0', bottom: '0', left: '0' }
-    });
-    
-    await browser.close();
+        const browser = await puppeteer.launch({ 
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        
+        const pdfBuffer = await page.pdf({ 
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '0', right: '0', bottom: '0', left: '0' }
+        });
+        
+        await browser.close();
 
-    const slug = clubName ? `${clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_` : '';
-    const filename = `${slug}${type}_report_${new Date().toISOString().split('T')[0]}.pdf`;
-    
-    return { buffer: pdfBuffer, filename, contentType: 'application/pdf' };
+        const slug = clubName ? `${clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_` : '';
+        const filename = `${slug}${type}_report_${new Date().toLocaleDateString('en-CA')}.pdf`;
+        
+        return { buffer: pdfBuffer, filename, contentType: 'application/pdf' };
+    } catch (error) {
+        console.error('[ReportsService] exportPDF error:', error);
+        throw error;
+    }
 };
 
 exports.exportExcel = async (ownerId) => {
-    const confQ = queries.getClubName(ownerId);
-    const adminConfigRes = await db.query(confQ.text, confQ.values);
-    const clubName = adminConfigRes.rows[0]?.club_name || '';
-    
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Life Care System';
+    if (!ownerId) throw new Error('Unauthorized: missing ownerId');
+    try {
+        const confQ = queries.getClubName(ownerId);
+        const adminConfigRes = await db.query(confQ.text, confQ.values);
+        const clubName = (adminConfigRes && adminConfigRes.rows && adminConfigRes.rows.length > 0) ? adminConfigRes.rows[0].club_name : '';
+        
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Life Care System';
 
-    // 1. Customers Sheet
-    const custSheet = workbook.addWorksheet('Customers');
-    custSheet.columns = [
-        { header: 'ID', key: 'id', width: 40 },
-        { header: 'Name', key: 'name', width: 30 },
-        { header: 'Phone', key: 'phone', width: 15 },
-        { header: 'Joined', key: 'joined_at', width: 15 },
-    ];
-    const custQ = queries.getExcelCustomers(ownerId);
-    const customers = await db.query(custQ.text, custQ.values);
-    custSheet.addRows(customers.rows);
+        // 1. Customers Sheet
+        const custSheet = workbook.addWorksheet('Customers');
+        custSheet.columns = [
+            { header: 'ID', key: 'id', width: 40 },
+            { header: 'Name', key: 'name', width: 30 },
+            { header: 'Phone', key: 'phone', width: 15 },
+            { header: 'Joined', key: 'joined_at', width: 15 },
+        ];
+        const custQ = queries.getExcelCustomers(ownerId);
+        const customers = await db.query(custQ.text, custQ.values);
+        if (customers && customers.rows) {
+            custSheet.addRows(customers.rows);
+        }
 
-    // 2. Sales Sheet
-    const saleSheet = workbook.addWorksheet('Sales');
-    saleSheet.columns = [
-        { header: 'Sale ID', key: 'sale_id', width: 40 },
-        { header: 'Date', key: 'sale_date', width: 15 },
-        { header: 'Customer', key: 'customer', width: 30 },
-        { header: 'Product', key: 'product', width: 30 },
-        { header: 'Quantity', key: 'qty', width: 10 },
-        { header: 'Price Charged (Paise)', key: 'price', width: 15 },
-    ];
-    const salesQ = queries.getExcelSales(ownerId);
-    const sales = await db.query(salesQ.text, salesQ.values);
-    saleSheet.addRows(sales.rows);
+        // 2. Sales Sheet
+        const saleSheet = workbook.addWorksheet('Sales');
+        saleSheet.columns = [
+            { header: 'Sale ID', key: 'sale_id', width: 40 },
+            { header: 'Date', key: 'sale_date', width: 15 },
+            { header: 'Customer', key: 'customer', width: 30 },
+            { header: 'Product', key: 'product', width: 30 },
+            { header: 'Quantity', key: 'qty', width: 10 },
+            { header: 'Price Charged (Paise)', key: 'price', width: 15 },
+        ];
+        const salesQ = queries.getExcelSales(ownerId);
+        const sales = await db.query(salesQ.text, salesQ.values);
+        if (sales && sales.rows) {
+            saleSheet.addRows(sales.rows);
+        }
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    
-    const slug = clubName ? `${clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_` : '';
-    const filename = `${slug}backup_${new Date().toISOString().split('T')[0]}.xlsx`;
+        const buffer = await workbook.xlsx.writeBuffer();
+        
+        const slug = clubName ? `${clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_` : '';
+        const filename = `${slug}backup_${new Date().toLocaleDateString('en-CA')}.xlsx`;
 
-    return { 
-        buffer, 
-        filename, 
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    };
+        return { 
+            buffer, 
+            filename, 
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        };
+    } catch (error) {
+        console.error('[ReportsService] exportExcel error:', error);
+        throw error;
+    }
 };
 
 exports.importCSV = async (ownerId, userId, type, fileBuffer) => {
+    if (!ownerId) throw new Error('Unauthorized: missing ownerId');
     const csvString = fileBuffer.toString('utf8');
     const lines = csvString.split('\n').map(l => l.trim()).filter(l => l);
     
@@ -214,7 +245,11 @@ exports.importCSV = async (ownerId, userId, type, fileBuffer) => {
                 const pvRes = await client.query(verQ.text, verQ.values);
                 const versionId = pvRes.rows[0].id;
 
-                const stockQ = queries.insertInitialStock(versionId, ownerId, qty, vp, userId);
+                const variantQ = queries.insertVariant(productId, ownerId, 'Standard');
+                const variantRes = await client.query(variantQ.text, variantQ.values);
+                const variantId = variantRes.rows[0].id;
+
+                const stockQ = queries.insertInitialStock(versionId, variantId, ownerId, qty, vp, userId);
                 await client.query(stockQ.text, stockQ.values);
                 
                 importedCount++;
@@ -225,9 +260,10 @@ exports.importCSV = async (ownerId, userId, type, fileBuffer) => {
         
         return { importedCount, missingIdCount };
     } catch (e) {
-        await client.query('ROLLBACK');
+        if (client) await client.query('ROLLBACK');
+        console.error('[ReportsService] importCSV error:', e);
         throw e;
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };

@@ -8,12 +8,12 @@ module.exports = {
         values: []
     }),
     getMasterAppStatsSessions: () => ({
-        text: `SELECT COUNT(DISTINCT user_id) FROM sessions WHERE expires_at > NOW() AND invalidated_at IS NULL AND last_activity_at > NOW() - INTERVAL '1 day'`,
+        text: `SELECT COUNT(DISTINCT user_id) FROM sessions WHERE expires_at > NOW() AND invalidated_at IS NULL AND last_seen_at > NOW() - INTERVAL '1 day'`,
         values: []
     }),
     getMasterLiveSessions: () => ({
-        text: `SELECT s.id, s.ip_address, s.device_info, s.created_at, s.expires_at, s.invalidated_at, s.last_activity_at, u.email, u.role
-               FROM sessions s JOIN users u ON s.user_id = u.id WHERE u.role != 'master' ORDER BY s.last_activity_at DESC`,
+        text: `SELECT s.id, s.ip_address, s.device_info, s.created_at, s.expires_at, s.invalidated_at, s.last_seen_at, u.email, u.role
+               FROM sessions s JOIN users u ON s.user_id = u.id WHERE u.role != 'master' ORDER BY s.last_seen_at DESC`,
         values: []
     }),
     getMasterActivityLog: () => ({

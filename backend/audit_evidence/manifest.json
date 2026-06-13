@@ -1,0 +1,14 @@
+[
+  {
+    "file": "migration_report_2026-06-10T13-09-32-735Z.json",
+    "checksum": "121a3806f4fbfc16dd6298096f50de57a96b8b25c174f3646e197dcd8a5511bd"
+  },
+  {
+    "file": "rollback_report_2026-06-10T13-09-32-736Z.json",
+    "checksum": "dcf544c9a2a3718d1c92e8c8231d772084a2ba9cbc0a51918ef52452cb02a76c"
+  },
+  {
+    "file": "failure_injection_tests_report_2026-06-10T13-09-32-738Z.json",
+    "checksum": "326f2f5c91834cd2642e79ee6082b062927349bda1faa4295d8edbb73f0fdb09"
+  }
+]

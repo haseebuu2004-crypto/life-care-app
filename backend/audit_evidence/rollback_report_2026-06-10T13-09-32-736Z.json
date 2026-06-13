@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "type": "ROLLBACK",
+  "stockBefore": 0,
+  "stockAfter": 0,
+  "checksum": "dcf544c9a2a3718d1c92e8c8231d772084a2ba9cbc0a51918ef52452cb02a76c",
+  "generatedAt": "2026-06-10T13-09-32-736Z"
+}
