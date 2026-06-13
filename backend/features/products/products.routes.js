@@ -11,9 +11,9 @@ router.post('/products', authenticateToken, requireAdmin, productValidation.vali
 router.put('/products/:id/price', authenticateToken, requireAdmin, productController.updateProductPrice);
 router.put('/products/:id/toggle', authenticateToken, requireAdmin, productController.toggleProductStatus);
 
-// Flavours
-router.post('/flavours', authenticateToken, requireAdmin, productValidation.validateAddFlavour, productController.addFlavour);
-router.put('/flavours/:id/toggle', authenticateToken, requireAdmin, productController.toggleFlavour);
-router.delete('/flavours/:id', authenticateToken, requireAdmin, productController.deleteFlavour);
+// Variants
+router.post('/variants', authenticateToken, requireAdmin, productValidation.validateAddFlavour, productController.addVariant);
+router.put('/variants/:id/toggle', authenticateToken, requireAdmin, productController.toggleVariant);
+router.delete('/variants/:id', authenticateToken, requireAdmin, productController.deleteVariant);
 
 module.exports = router;

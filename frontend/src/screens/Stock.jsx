@@ -1,28 +1,28 @@
 "use client";
-import { useState, useMemo, useCallback, memo, useEffect } from 'react';
+import { useState, useMemo, memo, useEffect } from 'react';
 import useStore from '../store/useStore';
-import { Package, Plus, Trash2, Edit2, Check, X, Minus } from 'lucide-react';
+import { Package, Plus, Trash2, Minus } from 'lucide-react';
 import { AddStockModal } from '../components/AddStockModal';
 import { useDebounce } from '../hooks/useDebounce';
 import { usePermissions } from '../hooks/usePermissions';
 import EmptyState from '../components/EmptyState';
 import { formatRupees } from '../utils/currency';
 
-const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, updateStockPrice, deleteStock, readOnly }) => {
-    const [tempQty, setTempQty] = useState(item.qty);
+const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, deleteStock, readOnly }) => {
+    const [tempQty, setTempQty] = useState(item.stock);
 
     useEffect(() => {
-        setTempQty(item.qty);
-    }, [item.qty]);
+        setTempQty(item.stock);
+    }, [item.stock]);
     
     const handleQtyChange = (e) => setTempQty(e.target.value);
     
     const saveQty = () => {
         const q = parseInt(tempQty);
-        if (!isNaN(q) && q !== item.qty) {
-            updateStockQuantity(item.stock_id, q).catch(err => {
+        if (!isNaN(q) && q !== item.stock) {
+            updateStockQuantity(item.inventoryId, q).catch(err => {
                 useStore.getState().showToast(err.message, 'error');
-                setTempQty(item.qty); // revert on error
+                setTempQty(item.stock); // revert on error
             });
         }
     };
@@ -33,32 +33,36 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, up
     const increment = () => {
         const newQ = parseInt(tempQty || 0) + 1;
         setTempQty(newQ);
-        updateStockQuantity(item.stock_id, newQ).catch(() => setTempQty(item.qty));
+        updateStockQuantity(item.inventoryId, newQ).catch(() => setTempQty(item.stock));
     };
     
     const decrement = () => {
         const newQ = Math.max(0, parseInt(tempQty || 0) - 1);
         setTempQty(newQ);
-        updateStockQuantity(item.stock_id, newQ).catch(() => setTempQty(item.qty));
+        updateStockQuantity(item.inventoryId, newQ).catch(() => setTempQty(item.stock));
     };
 
-    const isLowStock = item.qty <= 5;
+    const isLowStock = item.stock <= item.lowStockThreshold && item.alertEnabled;
 
     return (
         <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
             <td style={{ padding: '12px 16px' }}>
-                <strong>{item.product_name}</strong>
-                {isLowStock && (
-                    <span style={{ 
-                        display: 'inline-block', marginLeft: 8, padding: '2px 8px', 
-                        background: 'var(--alert-bg)', color: 'var(--alert-color)', 
-                        fontSize: 10, borderRadius: 12, fontWeight: 'bold' 
-                     }}>
-                        LOW
-                    </span>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong>{item.displayName}</strong>
+                    {isLowStock && (
+                        <div 
+                            style={{ 
+                                width: '8px', 
+                                height: '8px', 
+                                borderRadius: '50%', 
+                                backgroundColor: 'var(--alert-color)',
+                                flexShrink: 0
+                            }} 
+                            title="Low Stock"
+                        />
+                    )}
+                </div>
             </td>
-            <td style={{ padding: '12px 16px' }}>{item.flavor || 'Standard'}</td>
             <td style={{ padding: '12px 16px' }}>
                 {canEditStockQty && !readOnly ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -71,20 +75,20 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, up
                         </button>
                     </div>
                 ) : (
-                    <span style={{ fontWeight: isLowStock ? 'bold' : 'normal', color: isLowStock ? 'var(--alert-color)' : 'inherit', fontSize: '15px' }}>{item.qty}</span>
+                    <span style={{ fontWeight: isLowStock ? 'bold' : 'normal', color: isLowStock ? 'var(--alert-color)' : 'inherit', fontSize: '15px' }}>{item.stock}</span>
                 )}
             </td>
             <td style={{ padding: '12px 16px' }}>
-                {formatRupees(item.vendor_price * 100)}
+                {formatRupees(item.vendorPrice * 100)}
             </td>
             <td style={{ padding: '12px 16px' }}>{item.vp}</td>
             {isAdmin && !readOnly && (
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                     <button className="btn icon-btn" style={{ color: 'var(--alert-color)' }} onClick={() => {
-                        if (window.confirm(`Delete ${item.product_name} (${item.flavor || 'Standard'})?`)) {
-                            deleteStock(item.stock_id).catch(err => useStore.getState().showToast(err.message, 'error'));
+                        if (window.confirm(`Delete stock for ${item.displayName}?`)) {
+                            deleteStock(item.inventoryId).catch(err => useStore.getState().showToast(err.message, 'error'));
                         }
-                    }} title="Delete Product">
+                    }} title="Clear Stock">
                         <Trash2 size={16} />
                     </button>
                 </td>
@@ -96,7 +100,7 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, up
 StockRow.displayName = 'StockRow';
 
 export function Stock({ readOnly = false }) {
-    const { stock, updateStockQuantity, updateStockPrice, deleteStock } = useStore();
+    const { inventoryEntities, fetchInventoryEntities, updateStockQuantity, deleteStock } = useStore();
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     
@@ -105,34 +109,43 @@ export function Stock({ readOnly = false }) {
     const canEditStockQty = perm.canEditStockQty && !readOnly;
     const canAddStock = perm.canAddStock && !readOnly;
 
+    useEffect(() => {
+        if (!inventoryEntities || inventoryEntities.length === 0) {
+            fetchInventoryEntities();
+        }
+    }, [inventoryEntities, fetchInventoryEntities]);
+
+    const activeEntities = useMemo(() => {
+        return (inventoryEntities || []).filter(e => e.isActive === true && e.hasStockRecord === true);
+    }, [inventoryEntities]);
+
     const debouncedSearch = useDebounce(search, 300);
 
     const filteredStock = useMemo(() => {
-        let result = stock || [];
+        let result = activeEntities;
         if (debouncedSearch) {
             const q = debouncedSearch.toLowerCase();
             result = result.filter(s => 
-                s.product_name.toLowerCase().includes(q) || 
-                (s.flavor || '').toLowerCase().includes(q)
+                s.displayName.toLowerCase().includes(q)
             );
         }
         return result; 
-    }, [stock, debouncedSearch]);
+    }, [activeEntities, debouncedSearch]);
 
     const { totalStockValue, totalStockVp, lowStockItems } = useMemo(() => {
         let value = 0;
         let vp = 0;
         let low = 0;
-        (stock || []).forEach(s => {
-            const qty = s.qty || 0;
-            const sp = s.vendor_price || 0; // Using vendor_price for rough stock value estimation, since SP is variable
+        activeEntities.forEach(s => {
+            const qty = s.stock || 0;
+            const sp = s.vendorPrice || 0; 
             const sVp = s.vp || 0;
             value += qty * sp;
             vp += qty * sVp;
-            if (qty <= 5) low++;
+            if (qty <= s.lowStockThreshold && s.alertEnabled) low++;
         });
         return { totalStockValue: value, totalStockVp: vp, lowStockItems: low };
-    }, [stock]);
+    }, [activeEntities]);
 
     return (
         <div>
@@ -156,7 +169,7 @@ export function Stock({ readOnly = false }) {
                     </div>
                     <div className="card" style={{ padding: 15, borderLeft: '4px solid #10b981' }}>
                         <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Total Available V.P</div>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#10b981' }}>{totalStockVp}</div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#10b981' }}>{totalStockVp.toFixed(2)}</div>
                     </div>
                     <div className="card" style={{ padding: 15, borderLeft: '4px solid var(--alert-color)' }}>
                         <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Low Stock Items</div>
@@ -169,8 +182,7 @@ export function Stock({ readOnly = false }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                         <tr>
-                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Product</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Flavour</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left' }}>Entity</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Remaining Qty</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Vendor Price</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>V.P</th>
@@ -180,12 +192,11 @@ export function Stock({ readOnly = false }) {
                     <tbody>
                         {filteredStock.map(item => (
                             <StockRow 
-                                key={item.id} 
+                                key={item.inventoryId} 
                                 item={item} 
                                 isAdmin={perm.isAdmin} 
                                 canEditStockQty={canEditStockQty}
                                 updateStockQuantity={updateStockQuantity}
-                                updateStockPrice={updateStockPrice}
                                 deleteStock={deleteStock} 
                                 readOnly={readOnly}
                             />

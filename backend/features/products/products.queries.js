@@ -8,6 +8,7 @@ exports.getProducts = (ownerId) => {
             pv.id as version_id,
             pv.vendor_price,
             pv.volume_points,
+            pv.version_label,
             pv.is_active as version_is_active
         FROM products p
         JOIN product_versions pv ON pv.product_id = p.id
@@ -16,30 +17,33 @@ exports.getProducts = (ownerId) => {
     `, [ownerId]);
 };
 
-exports.getFlavours = (ownerId) => {
+exports.getVariants = (ownerId) => {
     return db.query(`
-        SELECT id, product_id, name, is_active FROM flavours WHERE owner_id = $1
+        SELECT v.id, v.product_version_id, v.name, v.sku, v.is_active, pv.product_id 
+        FROM variants v
+        JOIN product_versions pv ON v.product_version_id = pv.id
+        WHERE pv.product_id IN (SELECT id FROM products WHERE owner_id = $1)
     `, [ownerId]);
 };
 
 exports.insertProduct = (client, ownerId, name) => {
     return client.query(
-        `INSERT INTO products (owner_id, name) VALUES ($1, $2) RETURNING id`,
+        `INSERT INTO products (id, owner_id, name) VALUES (gen_random_uuid(), $1, $2) RETURNING id`,
         [ownerId, name]
     );
 };
 
-exports.insertFlavour = (client, productId, ownerId, name) => {
+exports.insertVariant = (client, productVersionId, ownerId, name) => {
     return client.query(
-        `INSERT INTO flavours (product_id, owner_id, name) VALUES ($1, $2, $3)`, 
-        [productId, ownerId, name]
+        `INSERT INTO variants (id, product_version_id, owner_id, name, is_active) VALUES (gen_random_uuid(), $1, $2, $3, true) RETURNING id`, 
+        [productVersionId, ownerId, name]
     );
 };
 
-exports.insertProductVersion = (client, productId, vendorPricePaise, vpValue, userId) => {
+exports.insertProductVersion = (client, productId, vendorPricePaise, vpValue, userId, versionLabel) => {
     return client.query(
-        `INSERT INTO product_versions (product_id, vendor_price, volume_points, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
-        [productId, vendorPricePaise, vpValue, userId]
+        `INSERT INTO product_versions (id, product_id, vendor_price, volume_points, created_by, version_label, is_active) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true) RETURNING id`,
+        [productId, vendorPricePaise, vpValue, userId, versionLabel]
     );
 };
 
@@ -51,11 +55,11 @@ exports.deprecateVersion = (client, oldVersionId) => {
     return client.query(`UPDATE product_versions SET is_active = false, effective_to = NOW() WHERE id = $1`, [oldVersionId]);
 };
 
-exports.insertNewVersion = (client, productId, vendorPricePaise, userId) => {
+exports.insertNewVersion = (client, productId, vendorPricePaise, userId, versionLabel) => {
     return client.query(
-        `INSERT INTO product_versions (product_id, vendor_price, created_by, is_active, effective_from) 
-         VALUES ($1, $2, $3, true, NOW()) RETURNING id`,
-        [productId, vendorPricePaise, userId]
+        `INSERT INTO product_versions (id, product_id, vendor_price, created_by, is_active, effective_from, version_label) 
+         VALUES (gen_random_uuid(), $1, $2, $3, true, NOW(), $4) RETURNING id`,
+        [productId, vendorPricePaise, userId, versionLabel]
     );
 };
 
@@ -75,22 +79,28 @@ exports.toggleProductVersion = (newStatus, versionId) => {
     return db.query(`UPDATE product_versions SET is_active = $1 WHERE id = $2`, [newStatus, versionId]);
 };
 
-exports.addFlavourDirect = (productId, ownerId, name) => {
-    return db.query(`INSERT INTO flavours (product_id, owner_id, name) VALUES ($1, $2, $3)`, [productId, ownerId, name]);
+exports.addVariantDirect = (productVersionId, ownerId, name) => {
+    return db.query(`INSERT INTO variants (id, product_version_id, owner_id, name, is_active) VALUES (gen_random_uuid(), $1, $2, $3, true) RETURNING id`, [productVersionId, ownerId, name]);
 };
 
-exports.getFlavourStatus = (id) => {
-    return db.query(`SELECT is_active FROM flavours WHERE id = $1`, [id]);
+exports.getVariantStatus = (id) => {
+    return db.query(`SELECT is_active FROM variants WHERE id = $1`, [id]);
 };
 
-exports.toggleFlavourStatus = (newStatus, id) => {
-    return db.query(`UPDATE flavours SET is_active = $1 WHERE id = $2`, [newStatus, id]);
+exports.toggleVariantStatus = (newStatus, id) => {
+    return db.query(`UPDATE variants SET is_active = $1 WHERE id = $2`, [newStatus, id]);
 };
 
-exports.checkFlavourDependencies = (id) => {
-    return db.query(`SELECT 1 FROM sale_items WHERE flavour_id = $1 LIMIT 1`, [id]);
+exports.checkVariantDependencies = (id) => {
+    // Check both sales and stock
+    return db.query(`
+        SELECT 1 FROM sale_items WHERE variant_id = $1 
+        UNION 
+        SELECT 1 FROM stock WHERE variant_id = $1 
+        LIMIT 1
+    `, [id]);
 };
 
-exports.deleteFlavourRecord = (id) => {
-    return db.query(`DELETE FROM flavours WHERE id = $1`, [id]);
+exports.deleteVariantRecord = (id) => {
+    return db.query(`DELETE FROM variants WHERE id = $1`, [id]);
 };

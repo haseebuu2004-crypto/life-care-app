@@ -3,7 +3,13 @@ const db = require('../../shared/db/connection');
 exports.getCustomers = (ownerId) => {
     return db.query(
         `SELECT c.id, c.name, c.phone, c.member_code, c.joined_at, c.is_active,
-         (SELECT COALESCE(SUM((si.price_charged) * si.quantity), 0) FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.customer_id = c.id AND s.is_deleted = false) as total_sales_revenue
+         COALESCE(
+           (SELECT SUM(si.price_charged::integer * si.quantity::integer) 
+            FROM sale_items si 
+            JOIN sales s ON si.sale_id = s.id 
+            WHERE s.customer_id = c.id AND s.is_deleted = false AND s.owner_id = $1),
+           0
+         ) as total_sales_revenue
          FROM customers c 
          WHERE c.owner_id = $1 
          ORDER BY c.name ASC`, 
@@ -14,7 +20,7 @@ exports.getCustomers = (ownerId) => {
 exports.addCustomer = (ownerId, name, phone, member_code, joined_at) => {
     return db.query(
         `INSERT INTO customers (owner_id, name, phone, member_code, joined_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [ownerId, name.trim(), phone || null, member_code || null, joined_at || new Date().toISOString().split('T')[0]]
+        [ownerId, name.trim(), phone || null, member_code || null, joined_at || new Date().toLocaleDateString('en-CA')]
     );
 };
 
@@ -33,18 +39,27 @@ exports.getCustomerSummary_Customer = (id, ownerId) => {
     return db.query(`SELECT * FROM customers WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
 };
 
-exports.getCustomerSummary_Sales = (id) => {
-    return db.query(`SELECT s.id, s.sale_date, si.quantity, si.price_charged, pv.selling_price, p.name as product_name
-                  FROM sales s 
-                  JOIN sale_items si ON s.id = si.sale_id
-                  JOIN product_versions pv ON si.product_version_id = pv.id
-                  JOIN products p ON pv.product_id = p.id
-                  WHERE s.customer_id = $1 AND s.is_deleted = false
-                  ORDER BY s.sale_date DESC`, [id]);
+exports.getCustomerSummary_Sales = (id, ownerId) => {
+    return db.query(
+        `SELECT s.id, s.sale_date, si.quantity, si.price_charged, p.name as product_name
+         FROM sales s 
+         JOIN sale_items si ON s.id = si.sale_id
+         JOIN product_versions pv ON si.product_version_id = pv.id
+         JOIN products p ON pv.product_id = p.id
+         WHERE s.customer_id = $1 AND s.owner_id = $2 AND s.is_deleted = false
+         ORDER BY s.sale_date DESC`,
+        [id, ownerId]
+    );
 };
 
-exports.getCustomerSummary_Attendance = (id) => {
-    return db.query(`SELECT id, attendance_date, type, shake_amount FROM attendance WHERE customer_id = $1 AND is_deleted = false ORDER BY attendance_date DESC`, [id]);
+exports.getCustomerSummary_Attendance = (id, ownerId) => {
+    return db.query(
+        `SELECT id, attendance_date, type, shake_amount 
+         FROM attendance 
+         WHERE customer_id = $1 AND owner_id = $2 AND is_deleted = false 
+         ORDER BY attendance_date DESC`,
+        [id, ownerId]
+    );
 };
 
 exports.findCustomerByName = (ownerId, customerName) => {

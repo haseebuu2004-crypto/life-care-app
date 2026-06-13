@@ -18,7 +18,7 @@ api.interceptors.response.use(response => {
             }
         } else if (error.response && error.response.status === 401) {
             // Session invalid, redirect to login
-            if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+            if (window.location.pathname !== '/login' && window.location.pathname !== '/' && !window.location.pathname.startsWith('/reset-password')) {
                 localStorage.removeItem('user');
                 window.location.href = '/login';
             }

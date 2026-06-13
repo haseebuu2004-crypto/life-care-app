@@ -16,6 +16,7 @@ const stockRoutes = require('../features/stock/stock.routes');
 const salesRoutes = require('../features/sales/sales.routes');
 const attendanceRoutes = require('../features/attendance/attendance.routes');
 const notificationsRoutes = require('../features/notifications/notifications.routes');
+const inventoryRoutes = require('../features/inventory/inventory.routes');
 
 // Apply API-wide rate limiting to everything except auth endpoints which have their own
 router.use(apiLimiter);
@@ -35,5 +36,6 @@ router.use('/', stockRoutes);
 router.use('/', salesRoutes);
 router.use('/', attendanceRoutes);
 router.use('/', notificationsRoutes);
+router.use('/inventory', inventoryRoutes);
 
 module.exports = router;

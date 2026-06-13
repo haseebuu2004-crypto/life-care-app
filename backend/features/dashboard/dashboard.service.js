@@ -17,12 +17,19 @@ const transporter = nodemailer.createTransport({
 const otpCache = new Map();
 
 exports.getStats = async (ownerId, startDate, endDate) => {
-    const cacheKey = `dashboard_stats:${ownerId}:${startDate}:${endDate}`;
-    const cachedData = await cache.getCache(cacheKey);
-    
-    if (cachedData) {
-        return { cached: true, data: cachedData };
-    }
+    try {
+        if (!ownerId) {
+            console.error("ownerId is missing in getStats");
+            throw new Error("Unauthorized: missing ownerId");
+        }
+
+        const periodCacheKey = `dashboard_stats:${ownerId}:${startDate}:${endDate}:period`;
+        const pitCacheKey = `dashboard_stats:${ownerId}:PIT`;
+
+    let [cachedPeriod, cachedPit] = await Promise.all([
+        cache.getCache(periodCacheKey),
+        cache.getCache(pitCacheKey)
+    ]);
 
     const stats = {
         totals: {
@@ -41,72 +48,144 @@ exports.getStats = async (ownerId, startDate, endDate) => {
         adminConfig: {}
     };
 
-    const confQuery = queries.getAdminConfig(ownerId);
-    const confRes = await db.query(confQuery.text, confQuery.values);
-    const lowStockThresh = confRes.rows[0]?.low_stock_threshold || 10;
-    stats.setupCompleted = confRes.rows[0]?.setup_completed || false;
-    stats.adminConfig = {
-        default_shake_amount: parseInt(confRes.rows[0]?.default_shake_amount || 0) / 100,
-        low_stock_threshold: parseInt(lowStockThresh)
-    };
+    if (!cachedPit) {
+        let confRes = { rows: [] };
+        let lowStockThresh = 10;
+        try {
+            const confQuery = queries.getAdminConfig(ownerId);
+            confRes = await db.query(confQuery.text, confQuery.values);
+            lowStockThresh = confRes.rows[0]?.low_stock_threshold;
+            
+            if (lowStockThresh === undefined || lowStockThresh === null) {
+                const sysRes = await db.query("SELECT value FROM settings WHERE key = 'SYSTEM_LOW_STOCK_THRESHOLD'");
+                lowStockThresh = sysRes.rows.length > 0 ? parseInt(sysRes.rows[0].value) : 10;
+            }
+        } catch(e) {
+            console.error("Stats Generation: Error fetching config. Using defaults.", e.message);
+        }
 
-    const scalarQuery = queries.getDashboardScalars(ownerId, lowStockThresh, startDate, endDate);
-    const lowStockQuery = queries.getLowStockItems(ownerId, lowStockThresh);
-    const monthlySalesQuery = queries.getMonthlyProductSales(ownerId, startDate, endDate);
-    const topCustomersQuery = queries.getTopCustomers(ownerId, startDate, endDate);
-    const shakeProfitQuery = queries.getShakeProfitDetails(ownerId, startDate, endDate);
+        const pitScalarQuery = queries.getDashboardPitScalars(ownerId);
+        const lowStockQuery = queries.getLowStockItems(ownerId);
 
-    const [scalarRes, res4, res5, res6, res7] = await Promise.all([
-        db.query(scalarQuery.text, scalarQuery.values),
-        db.query(lowStockQuery.text, lowStockQuery.values),
-        db.query(monthlySalesQuery.text, monthlySalesQuery.values),
-        db.query(topCustomersQuery.text, topCustomersQuery.values),
-        db.query(shakeProfitQuery.text, shakeProfitQuery.values)
-    ]);
+        let pitScalarRes = { rows: [] }, res4 = { rows: [] };
+        try {
+            pitScalarRes = await db.query(pitScalarQuery.text, pitScalarQuery.values);
+            res4 = await db.query(lowStockQuery.text, lowStockQuery.values);
+            
+            if (!pitScalarRes.rows[0]) console.warn("Stats Generation: Null aggregations returned for PIT scalars.");
+        } catch(e) {
+            console.error("Stats Generation: SQL error during PIT queries.", e.message);
+        }
 
-    stats.totals.totalSalesProfit = (scalarRes.rows[0]?.totalSalesProfit || 0) / 100;
-    stats.totals.totalSalesRevenue = (scalarRes.rows[0]?.totalSalesRevenue || 0) / 100;
-    stats.totals.totalStockVpValue = (scalarRes.rows[0]?.totalStockVpValue || 0) / 100;
-    stats.totals.totalShakeProfit = (scalarRes.rows[0]?.totalShakeProfit || 0) / 100;
-    stats.totals.lowStockCount = parseInt(scalarRes.rows[0]?.lowStock || 0);
+        cachedPit = {
+            setupCompleted: confRes.rows[0]?.setup_completed || false,
+            adminConfig: {
+                default_shake_amount: parseInt(confRes.rows[0]?.default_shake_amount || 0) / 100,
+                low_stock_threshold: parseInt(lowStockThresh)
+            },
+            totalStockVpValue: (pitScalarRes.rows[0]?.totalStockVpValue || 0) / 100,
+            lowStockCount: parseInt(pitScalarRes.rows[0]?.lowStock || 0),
+            lowStockItems: (res4.rows || []).map(r => ({ name: r.product_name, qty: parseInt(r.qty) }))
+        };
+        await cache.setCache(pitCacheKey, cachedPit, 300); // 5 minutes TTL
+    }
 
-    stats.lowStockItems = (res4.rows || []).map(r => ({ name: r.product_name, qty: parseInt(r.qty) }));
+    if (!cachedPeriod) {
+        const periodScalarQuery = queries.getDashboardPeriodScalars(ownerId, startDate, endDate);
+        const monthlySalesQuery = queries.getMonthlyProductSales(ownerId, startDate, endDate);
+        const topCustomersQuery = queries.getTopCustomers(ownerId, startDate, endDate);
+        const shakeProfitQuery = queries.getShakeProfitDetails(ownerId, startDate, endDate);
 
-    stats.monthlyProductSales = res5.rows || [];
-    if (stats.monthlyProductSales.length > 0) stats.totals.topSeller = stats.monthlyProductSales[0].name;
+        let periodScalarRes = { rows: [] }, res5 = { rows: [] }, res6 = { rows: [] }, res7 = { rows: [] };
+        try {
+            periodScalarRes = await db.query(periodScalarQuery.text, periodScalarQuery.values);
+            res5 = await db.query(monthlySalesQuery.text, monthlySalesQuery.values);
+            res6 = await db.query(topCustomersQuery.text, topCustomersQuery.values);
+            res7 = await db.query(shakeProfitQuery.text, shakeProfitQuery.values);
+            
+            if (!periodScalarRes.rows[0]) console.warn("Stats Generation: Null aggregations returned for period scalars.");
+        } catch(e) {
+            console.error("Stats Generation: SQL error during period queries.", e.message);
+        }
 
-    stats.topCustomers = (res6.rows || []).map(r => ({ name: r.name, profit: r.profit / 100 }));
+        const monthlyProductSales = res5.rows || [];
+        cachedPeriod = {
+            totalSalesProfit: (periodScalarRes.rows[0]?.totalSalesProfit || 0) / 100,
+            totalSalesRevenue: (periodScalarRes.rows[0]?.totalSalesRevenue || 0) / 100,
+            totalShakeProfit: (periodScalarRes.rows[0]?.totalShakeProfit || 0) / 100,
+            monthlyProductSales: monthlyProductSales,
+            topSeller: monthlyProductSales.length > 0 ? monthlyProductSales[0].name : 'N/A',
+            topCustomers: (res6.rows || []).map(r => ({ name: r.name, profit: r.profit / 100 })),
+            shakeProfitDetails: (res7.rows || []).map(r => ({
+                name: r.name,
+                attendance: r.attendance,
+                profitPerDay: r.profitPerDay / 100,
+                totalProfit: r.totalProfit / 100
+            }))
+        };
+        await cache.setCache(periodCacheKey, cachedPeriod, 300); // 5 minutes TTL
+    }
 
-    stats.shakeProfitDetails = (res7.rows || []).map(r => ({
-        name: r.name,
-        attendance: r.attendance,
-        profitPerDay: r.profitPerDay / 100,
-        totalProfit: r.totalProfit / 100
-    }));
+    stats.setupCompleted = cachedPit.setupCompleted;
+    stats.adminConfig = cachedPit.adminConfig;
+    stats.totals.totalStockVpValue = cachedPit.totalStockVpValue;
+    stats.totals.lowStockCount = cachedPit.lowStockCount;
+    stats.lowStockItems = cachedPit.lowStockItems;
 
-    await cache.setCache(cacheKey, stats, 300); // 5 minutes TTL
+    stats.totals.totalSalesProfit = cachedPeriod.totalSalesProfit;
+    stats.totals.totalSalesRevenue = cachedPeriod.totalSalesRevenue;
+    stats.totals.totalShakeProfit = cachedPeriod.totalShakeProfit;
+    stats.monthlyProductSales = cachedPeriod.monthlyProductSales;
+    stats.totals.topSeller = cachedPeriod.topSeller;
+    stats.topCustomers = cachedPeriod.topCustomers;
+    stats.shakeProfitDetails = cachedPeriod.shakeProfitDetails;
+
     return { cached: false, data: stats };
+    } catch (error) {
+        console.error("Dashboard Stats Error:", error);
+        throw error;
+    }
 };
 
-exports.resetData = async (ownerId, userId) => {
+exports.resetData = async (ownerId, userId, modules = []) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
         
-        const activeSalesQuery = queries.getActiveSales(ownerId);
-        const activeSalesRes = await client.query(activeSalesQuery.text, activeSalesQuery.values);
-        
-        for (const row of activeSalesRes.rows) {
-            const delQuery = queries.deleteSaleRestoreStock(row.id, userId, ownerId);
-            await client.query(delQuery.text, delQuery.values);
+        // If 'products' is selected, it forces 'sales_and_stock'
+        if (modules.includes('products') && !modules.includes('sales_and_stock')) {
+            modules.push('sales_and_stock');
         }
         
-        const softDelAttQuery = queries.softDeleteAttendance(ownerId);
-        await client.query(softDelAttQuery.text, softDelAttQuery.values);
+        if (modules.includes('sales_and_stock')) {
+            const activeSalesQuery = queries.getActiveSales(ownerId);
+            const activeSalesRes = await client.query(activeSalesQuery.text, activeSalesQuery.values);
+            
+            for (const row of activeSalesRes.rows) {
+                const delQuery = queries.deleteSaleRestoreStock(row.id, userId, ownerId);
+                await client.query(delQuery.text, delQuery.values);
+            }
+            // Wipe physical inventory
+            await client.query(`DELETE FROM stock WHERE owner_id = $1`, [ownerId]);
+            await client.query(`DELETE FROM stock_entries WHERE owner_id = $1`, [ownerId]);
+        }
+        
+        if (modules.includes('attendance')) {
+            const softDelAttQuery = queries.softDeleteAttendance(ownerId);
+            await client.query(softDelAttQuery.text, softDelAttQuery.values);
+        }
+        
+        if (modules.includes('products')) {
+            // Because sale_items references product_versions and sales, we must delete them first to prevent foreign key errors.
+            await client.query(`DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE owner_id = $1)`, [ownerId]);
+            await client.query(`DELETE FROM sales WHERE owner_id = $1`, [ownerId]);
+            
+            await client.query(`DELETE FROM products WHERE owner_id = $1`, [ownerId]);
+        }
         
         await client.query('COMMIT');
         
-        await audit.logAction(userId, 'DATA_RESET', null, null);
+        await audit.logAction(userId, 'DATA_RESET', null, null, { modules });
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
     } catch (error) {
         await client.query('ROLLBACK');
@@ -234,10 +313,14 @@ exports.requestResetOtp = async (userId, email, password) => {
     
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     
+    const expiresAtMs = Date.now() + 600000; // 10 minutes
+    
     otpCache.set(userId, {
         code: otpCode,
-        expiresAt: Date.now() + 600000 // 10 minutes
+        expiresAt: expiresAtMs
     });
+    
+    const expiresAtIso = new Date(expiresAtMs).toISOString();
     
     if (process.env.SMTP_USER) {
         try {
@@ -247,21 +330,22 @@ exports.requestResetOtp = async (userId, email, password) => {
                 subject: 'Data Reset OTP - Life Care System',
                 text: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`
             });
-            return "OTP sent to your email.";
+            return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
         } catch (emailErr) {
             console.error("SMTP Email failed, falling back to console:", emailErr.message);
             console.log(`[FALLBACK EMAIL] OTP sent to admin: ${otpCode}`);
-            return "Email failed to send. Check server console for OTP.";
+            return { message: "Email failed to send. Check server console for OTP.", expiresAt: expiresAtIso };
         }
     } else {
         console.log(`[STUB EMAIL] OTP sent to admin: ${otpCode}`);
-        return "OTP generated successfully. Check server console.";
+        return { message: "OTP generated successfully. Check server console.", expiresAt: expiresAtIso };
     }
 };
 
-exports.confirmReset = async (ownerId, userId, password, confirmText, otp) => {
+exports.confirmReset = async (ownerId, userId, password, confirmText, otp, modules) => {
     if (!password || !confirmText || !otp) throw new Error("Password, confirmation text, and OTP are required");
     if (confirmText !== 'RESET ALL DATA') throw new Error("Invalid confirmation phrase");
+    if (!modules || !Array.isArray(modules) || modules.length === 0) throw new Error("Please select at least one module to reset.");
     
     const userQuery = queries.getUserPasswordHash(userId);
     const userRes = await db.query(userQuery.text, userQuery.values);
@@ -272,13 +356,20 @@ exports.confirmReset = async (ownerId, userId, password, confirmText, otp) => {
     if (!isMatch) throw new Error("Incorrect password");
     
     const cached = otpCache.get(userId);
-    if (!cached || cached.code !== otp || Date.now() > cached.expiresAt) {
-        throw new Error("Invalid or expired OTP");
+    if (!cached) {
+        throw new Error("OTP request not found or has expired. Please request a new one.");
+    }
+    if (Date.now() > cached.expiresAt) {
+        otpCache.delete(userId);
+        throw new Error("OTP has expired. Please request a new one.");
+    }
+    if (cached.code !== otp) {
+        throw new Error("Invalid OTP code");
     }
     
     otpCache.delete(userId);
     
-    await exports.resetData(ownerId, userId);
+    await exports.resetData(ownerId, userId, modules);
 };
 
 exports.getDeletedRecords = async (ownerId) => {
@@ -314,7 +405,7 @@ exports.restoreDeletedRecord = async (ownerId, userId, type, id) => {
             const itemsRes = await client.query(itemsQ.text, itemsQ.values);
             
             for (const item of itemsRes.rows) {
-                const stockQ = queries.getStockForRestore(item.product_version_id, ownerId);
+                const stockQ = queries.getStockForRestore(item.product_version_id, item.variant_id, ownerId);
                 const stockRes = await client.query(stockQ.text, stockQ.values);
                 if (stockRes.rows.length === 0 || stockRes.rows[0].quantity < item.quantity) {
                     throw new Error("Insufficient stock to restore this sale.");
@@ -322,7 +413,7 @@ exports.restoreDeletedRecord = async (ownerId, userId, type, id) => {
             }
             
             for (const item of itemsRes.rows) {
-                const deductQ = queries.deductStockForRestore(item.quantity, item.product_version_id, ownerId);
+                const deductQ = queries.deductStockForRestore(item.quantity, item.product_version_id, item.variant_id, ownerId);
                 await client.query(deductQ.text, deductQ.values);
             }
             const restoreSaleQ = queries.restoreSale(id, ownerId);

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Package, Users, Clock, Database, Key, Eye, EyeOff } from 'lucide-react';
 import { Stock } from './Stock';
 import { UserManagement } from './UserManagement';
@@ -22,7 +22,6 @@ export function Settings({ userOnly = false }) {
     
     // System Config state
     const [shakeAmount, setShakeAmount] = useState(dashboardStats?.adminConfig?.default_shake_amount ?? 50);
-    const [lowStockThresh, setLowStockThresh] = useState(dashboardStats?.adminConfig?.low_stock_threshold ?? 10);
     const [configSaving, setConfigSaving] = useState(false);
 
     // Password change state
@@ -39,11 +38,54 @@ export function Settings({ userOnly = false }) {
     const [resetConfirmText, setResetConfirmText] = useState('');
     const [resetOtp, setResetOtp] = useState('');
     const [actualOtp, setActualOtp] = useState('');
+    const [otpExpiresAt, setOtpExpiresAt] = useState(null);
+    const [clockSkew, setClockSkew] = useState(0);
+    const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
+    const [resetModules, setResetModules] = useState({
+        attendance: false,
+        sales_and_stock: false,
+        products: false
+    });
+
+    useEffect(() => {
+        if (!otpExpiresAt) return;
+
+        const updateTimer = () => {
+            const adjustedNow = Date.now() + clockSkew;
+            const remainingMs = otpExpiresAt - adjustedNow;
+            if (remainingMs <= 0) {
+                setOtpSecondsLeft(0);
+            } else {
+                setOtpSecondsLeft(Math.ceil(remainingMs / 1000));
+            }
+        };
+
+        updateTimer();
+        const timer = setInterval(updateTimer, 1000);
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden) updateTimer();
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [otpExpiresAt]);
 
     const handleRequestOtp = async () => {
         try {
-            await api.post('/system/reset/request-otp', { password: resetPassword });
+            const res = await api.post('/system/reset/request-otp', { password: resetPassword });
             useStore.getState().showToast("OTP sent to your email.", "success");
+            if (res.data.expires_at) {
+                const serverTime = res.data.server_time ? new Date(res.data.server_time).getTime() : Date.now();
+                setClockSkew(serverTime - Date.now());
+                setOtpExpiresAt(new Date(res.data.expires_at).getTime());
+            } else {
+                setClockSkew(0);
+                setOtpExpiresAt(Date.now() + 600000);
+            }
             setResetStep(2);
         } catch (error) {
             useStore.getState().showToast(error.response?.data?.message || "Failed to generate OTP", "error");
@@ -52,16 +94,21 @@ export function Settings({ userOnly = false }) {
 
     const handleConfirmReset = async () => {
         try {
+            const selectedModules = Object.keys(resetModules).filter(k => resetModules[k]);
             await api.post('/system/reset/confirm', {
                 password: resetPassword,
                 confirmText: resetConfirmText,
-                otp: resetOtp
+                otp: resetOtp,
+                modules: selectedModules
             });
             useStore.getState().showToast("System reset successful", "success");
             setResetStep(0);
             setResetPassword('');
             setResetConfirmText('');
             setResetOtp('');
+            setOtpExpiresAt(null);
+            setClockSkew(0);
+            setResetModules({ attendance: false, sales_and_stock: false, products: false });
             useStore.getState().fetchData();
         } catch (error) {
             useStore.getState().showToast(error.response?.data?.message || "Reset failed", "error");
@@ -73,7 +120,7 @@ export function Settings({ userOnly = false }) {
         try {
             setMsg(''); setErr('');
             if (newPassword.length < 8) return setErr('New password must be at least 8 characters long.');
-            await api.put('/users/me/password', { oldPassword, newPassword });
+            await api.post('/auth/change-password', { oldPassword, newPassword });
             setMsg('Password changed successfully.');
             setOldPassword(''); setNewPassword('');
         } catch (error) {
@@ -105,8 +152,7 @@ export function Settings({ userOnly = false }) {
         setConfigSaving(true);
         try {
             await updateAdminConfig({ 
-                default_shake_amount: Number(shakeAmount), 
-                low_stock_threshold: Number(lowStockThresh) 
+                default_shake_amount: Number(shakeAmount)
             });
             useStore.getState().showToast("Configuration saved successfully", "success");
         } catch (error) {
@@ -135,14 +181,10 @@ export function Settings({ userOnly = false }) {
                     <div style={{ padding: 20 }}>
                         <h3 style={{ marginBottom: 20 }}>App Configuration</h3>
                         <div style={{ maxWidth: 400, marginBottom: 20 }}>
-                            <div className="form-group" style={{ marginBottom: 15 }}>
+                            <div className="form-group" style={{ marginBottom: 20 }}>
                                 <label style={{ display: 'block', fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Default Shake Profit (Rs.)</label>
                                 <input type="number" className="form-control" value={shakeAmount} onChange={e => setShakeAmount(e.target.value)} />
                                 <p style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>This amount is automatically applied to attendance records if left blank.</p>
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 20 }}>
-                                <label style={{ display: 'block', fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Low Stock Alert Threshold (Qty)</label>
-                                <input type="number" className="form-control" value={lowStockThresh} onChange={e => setLowStockThresh(e.target.value)} />
                             </div>
                             <button className="btn btn-primary" onClick={handleSaveConfig} disabled={configSaving}>
                                 {configSaving ? 'Saving...' : 'Save Configuration'}
@@ -159,7 +201,29 @@ export function Settings({ userOnly = false }) {
                         <p style={{ marginBottom: 20 }}>This action cannot be undone. It will wipe all business data (Sales, Stock, Attendance).</p>
                         
                         {resetStep === 0 && (
-                            <button className="btn btn-danger" onClick={() => setResetStep(1)}>Factory Reset Database</button>
+                            <div style={{ border: '1px solid var(--border-color)', padding: 15, borderRadius: 8, maxWidth: 400, marginBottom: 15, background: 'var(--card-bg)' }}>
+                                <h4 style={{ marginBottom: 15, fontSize: 16 }}>Select Data to Reset</h4>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={resetModules.attendance} onChange={e => setResetModules(prev => ({ ...prev, attendance: e.target.checked }))} style={{ width: 16, height: 16 }} />
+                                    <span style={{ fontSize: 14 }}>Attendance History</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, cursor: 'pointer', opacity: resetModules.products ? 0.6 : 1 }}>
+                                    <input type="checkbox" checked={resetModules.products ? true : resetModules.sales_and_stock} disabled={resetModules.products} onChange={e => setResetModules(prev => ({ ...prev, sales_and_stock: e.target.checked }))} style={{ width: 16, height: 16 }} />
+                                    <span style={{ fontSize: 14 }}>Sales & Stock Inventory</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={resetModules.products} onChange={e => {
+                                        const checked = e.target.checked;
+                                        setResetModules(prev => ({ 
+                                            ...prev, 
+                                            products: checked,
+                                            sales_and_stock: checked ? true : prev.sales_and_stock 
+                                        }));
+                                    }} style={{ width: 16, height: 16 }} />
+                                    <span style={{ fontSize: 14 }}>Product Manager <span style={{ fontSize: 12, color: 'var(--text-light)', marginLeft: 4 }}>(Forces Sales & Stock reset)</span></span>
+                                </label>
+                                <button className="btn btn-danger" style={{ width: '100%' }} onClick={() => setResetStep(1)} disabled={!resetModules.attendance && !resetModules.sales_and_stock && !resetModules.products}>Proceed to Reset</button>
+                            </div>
                         )}
                         
                         {resetStep === 1 && (
@@ -194,10 +258,20 @@ export function Settings({ userOnly = false }) {
                             <div style={{ border: '1px solid #ef4444', padding: 15, borderRadius: 8, maxWidth: 400 }}>
                                 <p style={{ fontWeight: 'bold', marginBottom: 10 }}>Step 3: Email OTP Verification</p>
                                 <p style={{ fontSize: 13, marginBottom: 10 }}>Enter the 6-digit code sent to your email.</p>
-                                <input type="text" value={resetOtp} onChange={e => setResetOtp(e.target.value)} className="form-control" style={{ marginBottom: 10 }} placeholder="123456" maxLength={6} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                                    <span style={{ fontSize: 12, color: 'var(--text-light)' }}>Time remaining:</span>
+                                    <span style={{ fontSize: 12, fontWeight: 'bold', color: otpSecondsLeft > 0 ? 'var(--text-color)' : '#dc2626' }}>
+                                        {Math.floor(otpSecondsLeft / 60)}:{(otpSecondsLeft % 60).toString().padStart(2, '0')}
+                                    </span>
+                                </div>
+                                <input type="text" value={resetOtp} onChange={e => setResetOtp(e.target.value)} disabled={otpSecondsLeft <= 0} className="form-control" style={{ marginBottom: 10 }} placeholder="123456" maxLength={6} />
                                 <div style={{ display: 'flex', gap: 10 }}>
                                     <button className="btn btn-outline" onClick={() => setResetStep(2)}>Back</button>
-                                    <button className="btn btn-danger" onClick={handleConfirmReset} disabled={resetOtp.length !== 6}>Confirm Reset</button>
+                                    {otpSecondsLeft > 0 ? (
+                                        <button className="btn btn-danger" onClick={handleConfirmReset} disabled={resetOtp.length !== 6}>Confirm Reset</button>
+                                    ) : (
+                                        <button className="btn btn-primary" onClick={() => { setResetStep(1); setResetOtp(''); setResetPassword(''); setOtpExpiresAt(null); setClockSkew(0); }}>Resend OTP</button>
+                                    )}
                                 </div>
                             </div>
                         )}

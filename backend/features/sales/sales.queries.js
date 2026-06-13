@@ -27,8 +27,10 @@ exports.getSaleItemsBySaleIds = (saleIds) => {
             SELECT 
                 si.sale_id,
                 si.id as item_id,
-                f.name as flavor,
+                si.variant_id,
+                v.name as flavor,
                 p.name as product_name,
+                pv.version_label,
                 si.quantity as qty,
                 si.price_charged,
                 si.standard_price_snap,
@@ -37,7 +39,7 @@ exports.getSaleItemsBySaleIds = (saleIds) => {
             FROM sale_items si
             LEFT JOIN product_versions pv ON si.product_version_id = pv.id
             LEFT JOIN products p ON pv.product_id = p.id
-            LEFT JOIN flavours f ON si.flavour_id = f.id
+            LEFT JOIN variants v ON si.variant_id = v.id
             WHERE si.sale_id = ANY($1)
         `,
         values: [saleIds]
@@ -56,8 +58,10 @@ exports.getAllSalesAdmin = (ownerId, recordedById) => {
             c.name as customer,
             u.email as recorded_by_email,
             si.id as item_id,
-            f.name as flavor,
+            si.variant_id,
+            v.name as flavor,
             p.name as product_name,
+            pv.version_label,
             si.quantity as qty,
             si.price_charged,
             si.standard_price_snap,
@@ -69,7 +73,7 @@ exports.getAllSalesAdmin = (ownerId, recordedById) => {
         LEFT JOIN sale_items si ON si.sale_id = s.id
         LEFT JOIN product_versions pv ON si.product_version_id = pv.id
         LEFT JOIN products p ON pv.product_id = p.id
-        LEFT JOIN flavours f ON si.flavour_id = f.id
+        LEFT JOIN variants v ON si.variant_id = v.id
         WHERE s.owner_id = $1 AND s.is_deleted = false
     `;
     
@@ -143,10 +147,10 @@ exports.getCustomerName = (customerId) => {
 // Remaining Stock — post-sale notification check
 // Source: salesService.js line 121
 // ============================================================
-exports.getRemainingStock = (productVersionId, ownerId) => {
+exports.getRemainingStock = (productVersionId, variantId, ownerId) => {
     return {
-        text: `SELECT quantity FROM stock WHERE product_version_id = $1 AND owner_id = $2`,
-        values: [productVersionId, ownerId]
+        text: `SELECT quantity FROM stock WHERE product_version_id = $1 AND variant_id = $2 AND owner_id = $3`,
+        values: [productVersionId, variantId, ownerId]
     };
 };
 
@@ -179,7 +183,7 @@ exports.checkSalePermission = (saleId, ownerId) => {
 exports.getSaleItem = (itemId, ownerId) => {
     return {
         text: `
-            SELECT si.sale_id, si.quantity, si.product_version_id, s.recorded_by
+            SELECT si.sale_id, si.quantity, si.product_version_id, si.variant_id, s.recorded_by
             FROM sale_items si
             JOIN sales s ON si.sale_id = s.id
             WHERE si.id = $1 AND s.owner_id = $2 AND s.is_deleted = false
@@ -214,13 +218,13 @@ exports.deleteSaleItemRow = (itemId) => {
 // Restore Item Stock — manual stock restoration
 // Source: salesService.js lines 193-197
 // ============================================================
-exports.restoreItemStock = (quantity, productVersionId, ownerId) => {
+exports.restoreItemStock = (quantity, productVersionId, variantId, ownerId) => {
     return {
         text: `
             UPDATE stock 
             SET quantity = quantity + $1 
-            WHERE product_version_id = $2 AND owner_id = $3
+            WHERE product_version_id = $2 AND variant_id = $3 AND owner_id = $4
         `,
-        values: [quantity, productVersionId, ownerId]
+        values: [quantity, productVersionId, variantId, ownerId]
     };
 };

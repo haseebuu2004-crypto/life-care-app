@@ -11,11 +11,8 @@ export function AuthProvider({ children }) {
         try {
             useStore.getState().resetStore();
             const { data } = await api.post('/auth/login', { email, password });
-            if (!data?.token) throw new Error('Invalid response from server');
-            localStorage.setItem('token', data.token);
-            if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-            localStorage.setItem('sessionId', String(data.sessionId || ''));
-            const loggedInUser = { id: data.user.id, username: data.user.username, email: data.user.email, role: data.role };
+            if (!data?.success) throw new Error('Invalid response from server');
+            const loggedInUser = { id: data.user.id, username: data.user.username || data.user.email, email: data.user.email, role: data.user.role, forcePasswordChange: data.user.forcePasswordChange };
             localStorage.setItem('user', JSON.stringify(loggedInUser));
             setUser(loggedInUser);
         } catch (error) {
@@ -25,13 +22,8 @@ export function AuthProvider({ children }) {
     };
 
     const logout = async () => {
-        const refreshToken = localStorage.getItem('refreshToken');
-        const sessionId = localStorage.getItem('sessionId');
-        try { await api.post('/auth/logout', { sessionId, refreshToken }); } catch (_) {}
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+        try { await api.post('/auth/logout'); } catch (_) {}
         localStorage.removeItem('user');
-        localStorage.removeItem('sessionId');
         useStore.getState().resetStore();
         setUser(null);
     };
@@ -46,8 +38,18 @@ export function AuthProvider({ children }) {
         }
     };
 
+    const resetPassword = async (token, newPassword) => {
+        try {
+            const { data } = await api.post('/auth/reset-password', { token, newPassword });
+            return data;
+        } catch (error) {
+            const msg = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to reset password';
+            throw new Error(msg);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, forgotPassword }}>
+        <AuthContext.Provider value={{ user, login, logout, forgotPassword, resetPassword }}>
             {children}
         </AuthContext.Provider>
     );

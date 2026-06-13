@@ -20,9 +20,9 @@ module.exports = {
     }),
 
     // Sessions
-    createSession: (userId, expiresAt, ip, ua) => ({
-        text: `INSERT INTO sessions (user_id, expires_at, ip_address, device_info) VALUES ($1, $2, $3, $4) RETURNING id`,
-        values: [userId, expiresAt, ip, ua]
+    createSession: (userId, tokenHash, tenantId, expiresAt, ip, ua) => ({
+        text: `INSERT INTO sessions (user_id, token_hash, tenant_id, expires_at, ip_address, device_info) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        values: [userId, tokenHash, tenantId, expiresAt, ip, ua]
     }),
     getSessionById: (sessionId) => ({
         text: `SELECT s.id as session_id, s.expires_at, u.id, u.email, u.role, u.owner_id, u.is_active, u.force_password_change 
@@ -31,31 +31,63 @@ module.exports = {
                WHERE s.id = $1 AND s.expires_at > NOW() AND s.invalidated_at IS NULL`,
         values: [sessionId]
     }),
+    getSessionByHash: (tokenHash) => ({
+        text: `SELECT s.id as session_id, s.expires_at, u.id, u.email, u.role, u.owner_id, u.is_active, u.force_password_change 
+               FROM sessions s 
+               JOIN users u ON s.user_id = u.id 
+               WHERE s.token_hash = $1 AND s.expires_at > NOW() AND s.invalidated_at IS NULL`,
+        values: [tokenHash]
+    }),
     invalidateSession: (sessionId) => ({
         text: `UPDATE sessions SET invalidated_at = NOW() WHERE id = $1`,
         values: [sessionId]
+    }),
+    invalidateSessionByHash: (tokenHash) => ({
+        text: `UPDATE sessions SET invalidated_at = NOW() WHERE token_hash = $1`,
+        values: [tokenHash]
+    }),
+    invalidateUserSessionById: (userId, sessionId) => ({
+        text: `UPDATE sessions SET invalidated_at = NOW() WHERE user_id = $1 AND id = $2 AND invalidated_at IS NULL`,
+        values: [userId, sessionId]
     }),
     invalidateAllSessions: (userId) => ({
         text: `UPDATE sessions SET invalidated_at = NOW() WHERE user_id = $1 AND invalidated_at IS NULL`,
         values: [userId]
     }),
-    invalidateOtherSessions: (userId, sessionId) => ({
-        text: `UPDATE sessions SET invalidated_at = NOW() WHERE user_id = $1 AND id != $2 AND invalidated_at IS NULL`,
-        values: [userId, sessionId]
+    invalidateOtherSessions: (userId, tokenHash) => ({
+        text: `UPDATE sessions SET invalidated_at = NOW() WHERE user_id = $1 AND token_hash != $2 AND invalidated_at IS NULL`,
+        values: [userId, tokenHash]
+    }),
+    getActiveSessionsForUser: (userId) => ({
+        text: `SELECT id, device_info, created_at, last_seen_at, ip_address FROM sessions WHERE user_id = $1 AND expires_at > NOW() AND invalidated_at IS NULL ORDER BY last_seen_at DESC`,
+        values: [userId]
+    }),
+    evictOldestSessions: (userId, keepCount) => ({
+        text: `UPDATE sessions SET invalidated_at = NOW() WHERE id IN (
+                   SELECT id FROM sessions 
+                   WHERE user_id = $1 AND expires_at > NOW() AND invalidated_at IS NULL 
+                   ORDER BY last_seen_at DESC 
+                   OFFSET $2
+               )`,
+        values: [userId, keepCount]
     }),
 
     // Password Reset
-    createPasswordReset: (userId, expiresAt) => ({
-        text: `INSERT INTO password_resets (user_id, expires_at) VALUES ($1, $2) RETURNING id`,
-        values: [userId, expiresAt]
+    invalidateOldPasswordResets: (userId) => ({
+        text: `UPDATE password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`,
+        values: [userId]
     }),
-    getValidPasswordReset: (token) => ({
-        text: `SELECT * FROM password_resets WHERE id = $1 AND expires_at > NOW() AND used_at IS NULL`,
-        values: [token]
+    createPasswordReset: (userId, tokenHash, expiresAt) => ({
+        text: `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3) RETURNING id`,
+        values: [userId, tokenHash, expiresAt]
     }),
-    consumePasswordReset: (token) => ({
-        text: `UPDATE password_resets SET used_at = NOW() WHERE id = $1`,
-        values: [token]
+    getPasswordResetByHash: (tokenHash) => ({
+        text: `SELECT * FROM password_resets WHERE token_hash = $1 ORDER BY created_at DESC LIMIT 1`,
+        values: [tokenHash]
+    }),
+    consumePasswordReset: (tokenHash) => ({
+        text: `UPDATE password_resets SET used_at = NOW() WHERE token_hash = $1`,
+        values: [tokenHash]
     }),
 
     // Passwords
@@ -76,7 +108,11 @@ module.exports = {
 
     // Middleware Utilities
     bumpSessionActivity: (sessionId) => ({
-        text: `UPDATE sessions SET last_activity_at = NOW() WHERE id = $1`,
+        text: `UPDATE sessions SET last_seen_at = NOW() WHERE id = $1`,
         values: [sessionId]
+    }),
+    bumpSessionActivityByHash: (tokenHash) => ({
+        text: `UPDATE sessions SET last_seen_at = NOW() WHERE token_hash = $1`,
+        values: [tokenHash]
     })
 };

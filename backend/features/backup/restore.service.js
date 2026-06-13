@@ -84,9 +84,15 @@ class RestoreService {
     }
 
     async executeRestore(ownerId, type, parsedData, strategy) {
-        const allowedTables = ['customers', 'products', 'product_versions', 'flavours', 'sales', 'sale_items', 'attendance', 'stock'];
+        const allowedTables = ['customers', 'products', 'product_versions', 'variants', 'sales', 'sale_items', 'attendance', 'stock'];
         
-        const client = await pool.connect();
+        // Backwards compatibility: map old 'flavours' sheet to 'variants'
+        if (parsedData.data && parsedData.data['flavours']) {
+            parsedData.data['variants'] = parsedData.data['flavours'];
+            delete parsedData.data['flavours'];
+        }
+        
+        const client = await pool.pool.connect();
         try {
             await client.query('BEGIN');
 
@@ -94,67 +100,20 @@ class RestoreService {
             const snapQ = queries.getSaleItemsSnapshot(ownerId);
             const preSalesRes = await client.query(snapQ.text, snapQ.values);
             const preSales = {};
-            preSalesRes.rows.forEach(r => preSales[r.product_version_id] = parseInt(r.qty));
+            preSalesRes.rows.forEach(r => preSales[r.variant_id] = parseInt(r.qty));
 
 
-            // Layer 3 Safeguard: Trigger silent auto-backup before wiping
-            if (strategy === 'wipe') {
-                try {
-                    const shadowData = await backupService.getExportData('full', ownerId);
-                    const buffer = await backupService.generateExcel(shadowData, 'full', ownerId);
-                    // In a real scenario, we'd save this to a secure vault.
-                    // For now, we log it locally as a proof of concept.
-                    console.log(`[SAFEGUARD] Shadow backup generated for ${ownerId} prior to Wipe & Replace (${buffer.length} bytes).`);
-                } catch (e) {
-                    console.error("Shadow backup failed, but proceeding anyway:", e);
-                }
-            }
-
-            if (strategy === 'wipe') {
-                let tablesToWipe = new Set(Object.keys(parsedData.data));
-                
-                // Cascade wipe to child dependencies to prevent foreign key errors
-                if (tablesToWipe.has('products')) {
-                    tablesToWipe.add('product_versions');
-                    tablesToWipe.add('flavours');
-                }
-                if (tablesToWipe.has('product_versions')) {
-                    tablesToWipe.add('stock');
-                    tablesToWipe.add('sale_items');
-                }
-                if (tablesToWipe.has('customers')) {
-                    tablesToWipe.add('sales');
-                    tablesToWipe.add('attendance');
-                }
-                if (tablesToWipe.has('sales')) {
-                    tablesToWipe.add('sale_items');
-                }
-
-                const wipeOrder = ['attendance', 'sale_items', 'sales', 'stock', 'flavours', 'product_versions', 'products', 'customers'];
-                for (const table of wipeOrder) {
-                    if (tablesToWipe.has(table)) {
-                        if (table === 'sale_items') {
-                            const wQ = queries.deleteSaleItemsWipe(ownerId);
-                            await client.query(wQ.text, wQ.values);
-                        } else if (table === 'product_versions') {
-                            const wQ = queries.deleteProductVersionsWipe(ownerId);
-                            await client.query(wQ.text, wQ.values);
-                        } else {
-                            const wQ = queries.deleteTableWipe(table, ownerId);
-                            await client.query(wQ.text, wQ.values);
-                        }
-                    }
-                }
-            }
+            // Layer 3 Safeguard: Trigger silent auto-backup before wiping is removed because wipe is removed
+            // Cascade wipe is removed
 
             // Restore engine - strictly ordered to prevent insertion foreign key violations
-            const insertOrder = ['customers', 'products', 'product_versions', 'flavours', 'stock', 'sales', 'sale_items', 'attendance'];
+            const insertOrder = ['customers', 'products', 'product_versions', 'variants', 'stock', 'sales', 'sale_items', 'attendance'];
             for (const tableName of insertOrder) {
                 const rows = parsedData.data[tableName];
                 if (!rows || rows.length === 0) continue;
                 
-                if (tableName === 'stock' && strategy === 'merge') {
-                    console.log('Skipping stock sheet during merge strategy to protect live stock data.');
+                if (tableName === 'stock') {
+                    console.log('Skipping stock sheet to protect live stock data.');
                     continue;
                 }
                 
@@ -163,10 +122,11 @@ class RestoreService {
                     continue;
                 }
 
-                const columns = Object.keys(rows[0]).filter(k => k !== 'id' || strategy === 'wipe' || strategy === 'merge');
+                const columns = Object.keys(rows[0]).filter(k => k !== 'id' || true);
                 
                 let dbColumns = columns.map(c => {
                     if (tableName === 'customers' && c === 'date') return 'joined_at';
+                    if (tableName === 'variants' && c === 'product_id') return 'product_version_id';
                     return c;
                 });
                 
@@ -184,17 +144,11 @@ class RestoreService {
                         return val;
                     });
 
-                    if (strategy === 'merge') {
-                        // ON CONFLICT requires a unique constraint. We assume id is unique UUID.
-                        if (columns.includes('id')) {
-                            const query = queries.buildMergeInsertQuery(tableName, dbColumns);
-                            await client.query(query, values);
-                        } else {
-                            const query = queries.buildStandardInsertQuery(tableName, dbColumns);
-                            await client.query(query, values);
-                        }
+                    // ON CONFLICT requires a unique constraint. We assume id is unique UUID.
+                    if (columns.includes('id')) {
+                        const query = queries.buildMergeInsertQuery(tableName, dbColumns);
+                        await client.query(query, values);
                     } else {
-                        // Wipe strategy - just insert
                         const query = queries.buildStandardInsertQuery(tableName, dbColumns);
                         await client.query(query, values);
                     }
@@ -204,20 +158,18 @@ class RestoreService {
             // Snapshot active sales after restore
             const postSalesRes = await client.query(snapQ.text, snapQ.values);
             const postSales = {};
-            postSalesRes.rows.forEach(r => postSales[r.product_version_id] = parseInt(r.qty));
+            postSalesRes.rows.forEach(r => postSales[r.variant_id] = parseInt(r.qty));
 
-            // Calculate exact diff and deduct from stock ONLY for Safe Merge
-            if (strategy === 'merge') {
-                const allPvIds = new Set([...Object.keys(preSales), ...Object.keys(postSales)]);
-                for (const pvId of allPvIds) {
-                    const preQty = preSales[pvId] || 0;
-                    const postQty = postSales[pvId] || 0;
-                    const diff = postQty - preQty;
-                    
-                    if (diff !== 0) {
-                        const updQ = queries.updateStockDifferential(diff, pvId, ownerId);
-                        await client.query(updQ.text, updQ.values);
-                    }
+            // Calculate exact diff and deduct from stock
+            const allVariantIds = new Set([...Object.keys(preSales), ...Object.keys(postSales)]);
+            for (const variantId of allVariantIds) {
+                const preQty = preSales[variantId] || 0;
+                const postQty = postSales[variantId] || 0;
+                const diff = postQty - preQty;
+                
+                if (diff !== 0) {
+                    const updQ = queries.updateStockDifferential(diff, variantId, ownerId);
+                    await client.query(updQ.text, updQ.values);
                 }
             }
 

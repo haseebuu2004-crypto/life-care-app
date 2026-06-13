@@ -1,0 +1,16 @@
+2026-06-12T20:09:30: ◇ injected env (23) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+2026-06-12T20:09:30: Connected to the PostgreSQL database.
+2026-06-12T20:09:30: Database migrations are now managed by Prisma.
+2026-06-12T20:09:30: Connected to the PostgreSQL database.
+2026-06-12T20:09:30: Database migrations are now managed by Prisma.
+2026-06-12T20:09:30: No Upstash credentials found. Falling back to in-memory cache.
+2026-06-12T20:09:34: CronService: Automated backup schedules initialized.
+2026-06-12T20:09:34: server running on port 3000
+2026-06-12T20:15:37: ◇ injected env (25) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+2026-06-12T20:15:37: Connected to the PostgreSQL database.
+2026-06-12T20:15:37: Database migrations are now managed by Prisma.
+2026-06-12T20:15:37: Connected to the PostgreSQL database.
+2026-06-12T20:15:37: Database migrations are now managed by Prisma.
+2026-06-12T20:15:37: Upstash Redis initialized
+2026-06-12T20:15:40: CronService: Automated backup schedules initialized.
+2026-06-12T20:15:40: server running on port 3000

@@ -5,68 +5,54 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { formatRupees } from '../utils/currency';
 
 export function AddSaleModal({ onClose }) {
-    const { stock, customers, fetchCustomers, addSale } = useStore();
+    const { inventoryEntities, fetchInventoryEntities, customers, fetchCustomers, addSale } = useStore();
     
     const [customerInput, setCustomerInput] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [items, setItems] = useState([{ stock_id: '', flavour_id: '', qty: 1, sellingPrice: '' }]);
+    const [items, setItems] = useState([{ inventoryId: '', qty: 1, sellingPrice: '' }]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         fetchCustomers();
-    }, [fetchCustomers]);
+        if (!inventoryEntities || inventoryEntities.length === 0) {
+            fetchInventoryEntities();
+        }
+    }, [fetchCustomers, fetchInventoryEntities, inventoryEntities]);
 
     const activeCustomers = useMemo(() => {
-        return customers.filter(c => c.is_active);
+        return (customers || []).filter(c => c.is_active);
     }, [customers]);
 
-    const stockOptions = useMemo(() => {
-        const products = [];
-        stock.forEach(s => {
-            let p = products.find(p => p.name === s.product_name);
-            if (!p) {
-                p = { name: s.product_name, variants: [] };
-                products.push(p);
-            }
-            p.variants.push(s);
-        });
-        return products;
-    }, [stock]);
+    const activeEntities = useMemo(() => {
+        return (inventoryEntities || []).filter(e => e.isActive === true);
+    }, [inventoryEntities]);
+
+    // For sales, we only want to show entities that actually have stock available
+    const availableEntities = useMemo(() => {
+        return activeEntities.filter(e => e.stock > 0);
+    }, [activeEntities]);
 
     const handleItemChange = (index, field, value) => {
         const newItems = [...items];
         newItems[index][field] = value;
         
-        if (field === 'productName') {
-            const product = stockOptions.find(p => p.name === value);
-            if (product && product.variants.length > 0) {
-                newItems[index].stock_id = product.variants[0].id;
-                newItems[index].sellingPrice = '';
-            } else {
-                newItems[index].stock_id = '';
-                newItems[index].sellingPrice = '';
-            }
-        }
-        
-        if (field === 'stock_id') {
-            const s = stock.find(st => st.id === value);
-            if (s) newItems[index].sellingPrice = '';
+        if (field === 'inventoryId') {
+            newItems[index].sellingPrice = ''; // reset price on change
         }
         
         setItems(newItems);
     };
 
-    const addItem = () => setItems([...items, { stock_id: '', flavour_id: '', qty: 1, sellingPrice: '' }]);
+    const addItem = () => setItems([...items, { inventoryId: '', qty: 1, sellingPrice: '' }]);
     const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
 
     const calculations = useMemo(() => {
         let total = 0;
         let profit = 0;
         items.forEach(item => {
-            const stockId = item.stock_id; // UUID
-            const s = stock.find(st => st.id === stockId);
-            if (s && item.stock_id) {
-                const costPrice = s.vendor_price || 0;
+            const e = activeEntities.find(st => st.inventoryId === item.inventoryId);
+            if (e && item.inventoryId) {
+                const costPrice = e.vendorPrice || 0;
                 const sellingPrice = parseFloat(item.sellingPrice) || 0;
                 const qty = parseInt(item.qty) || 0;
                 total += sellingPrice * qty;
@@ -74,14 +60,14 @@ export function AddSaleModal({ onClose }) {
             }
         });
         return { total, profit };
-    }, [items, stock]);
+    }, [items, activeEntities]);
 
     const onSubmit = async (e) => {
         e.preventDefault();
         
         if (!customerInput.trim()) return useStore.getState().showToast("Please select or enter a customer", "warn");
         
-        const validItems = items.filter(i => i.stock_id && i.qty > 0 && i.sellingPrice !== '');
+        const validItems = items.filter(i => i.inventoryId && i.qty > 0 && i.sellingPrice !== '');
         if (validItems.length === 0) return useStore.getState().showToast("At least 1 valid product required", "warn");
 
         const hasZeroPrice = validItems.some(i => parseFloat(i.sellingPrice) === 0);
@@ -93,14 +79,14 @@ export function AddSaleModal({ onClose }) {
         try {
             setLoading(true);
             const itemsPayload = validItems.map(i => {
-                const s = stock.find(st => st.id === i.stock_id);
+                const ent = activeEntities.find(st => st.inventoryId === i.inventoryId);
                 return {
-                    product_version_id: s.version_id,
-                    flavour_id: s.flavour_id || null,
+                    inventoryId: ent.inventoryId,
+                    productVersionId: ent.productVersionId,
                     quantity: parseInt(i.qty) || 1,
                     price_charged: Math.round(i.sellingPrice * 100),
                     standard_price_snap: 0,
-                    vendor_price_snap: Math.round((s?.vendor_price || 0) * 100)
+                    vendor_price_snap: Math.round((ent.vendorPrice || 0) * 100)
                 };
             });
 
@@ -165,48 +151,30 @@ export function AddSaleModal({ onClose }) {
                     <div style={{ marginTop: 20, marginBottom: 10, fontWeight: 'bold' }}>Products</div>
                     
                     {items.map((item, index) => {
-                        const selectedStock = stock.find(s => s.id === item.stock_id);
-                        const selectedProductName = selectedStock ? selectedStock.product_name : '';
-                        const productVariants = selectedProductName ? stockOptions.find(p => p.name === selectedProductName)?.variants : [];
-
-                        const costPrice = selectedStock?.vendor_price || 0;
+                        const selectedEntity = activeEntities.find(e => e.inventoryId === item.inventoryId);
+                        const costPrice = selectedEntity?.vendorPrice || 0;
                         const sellingPrice = parseFloat(item.sellingPrice) || 0;
                         const rowProfit = (sellingPrice - costPrice) * item.qty;
 
                         return (
-                            <div key={index} style={{ marginBottom: 15, paddingBottom: 10, borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 2fr) minmax(120px, 1.5fr) 70px 100px 100px 40px', gap: '10px', alignItems: 'start' }}>
+                            <div key={`sale-item-${index}`} style={{ marginBottom: 15, paddingBottom: 10, borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 3fr) 70px 100px 100px 40px', gap: '10px', alignItems: 'start' }}>
                                     
                                     <div>
                                         <select 
-                                            value={selectedProductName} 
-                                            onChange={e => handleItemChange(index, 'productName', e.target.value)}
+                                            value={item.inventoryId} 
+                                            onChange={e => handleItemChange(index, 'inventoryId', e.target.value)}
                                             required
                                             style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                                         >
-                                            <option value="">Product</option>
-                                            {stockOptions.map(p => (
-                                                <option key={p.name} value={p.name}>{p.name}</option>
+                                            <option value="">Select Entity</option>
+                                            {availableEntities.map(e => (
+                                                <option key={e.inventoryId} value={e.inventoryId}>{e.displayName}</option>
                                             ))}
                                         </select>
-                                    </div>
-                                    
-                                    <div>
-                                        <select 
-                                            value={item.stock_id} 
-                                            onChange={e => handleItemChange(index, 'stock_id', e.target.value)}
-                                            required
-                                            disabled={!productVariants || productVariants.length === 0}
-                                            style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
-                                        >
-                                            <option value="">Variant</option>
-                                            {productVariants?.map(v => (
-                                                <option key={v.id} value={v.id}>{v.flavor || 'Standard'} ({formatRupees(v.vendor_price * 100)})</option>
-                                            ))}
-                                        </select>
-                                        {selectedStock && (
-                                            <div style={{ fontSize: 11, color: selectedStock.qty < item.qty ? 'var(--alert-color)' : 'var(--text-light)', marginTop: 4 }}>
-                                                Available: {selectedStock.qty}
+                                        {selectedEntity && (
+                                            <div style={{ fontSize: 11, color: selectedEntity.stock < item.qty ? 'var(--alert-color)' : 'var(--text-light)', marginTop: 4 }}>
+                                                Available: {selectedEntity.stock}
                                             </div>
                                         )}
                                     </div>
@@ -235,7 +203,7 @@ export function AddSaleModal({ onClose }) {
                                             placeholder="Sell Price"
                                             style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                                         />
-                                        {selectedStock && (
+                                        {selectedEntity && (
                                             <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>
                                                 Vendor Price: {formatRupees(costPrice * 100)}
                                             </div>
@@ -244,9 +212,9 @@ export function AddSaleModal({ onClose }) {
 
                                     <div>
                                         <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 'bold', color: rowProfit > 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
-                                            {selectedStock && item.sellingPrice !== '' ? formatRupees(rowProfit * 100) : '-'}
+                                            {selectedEntity && item.sellingPrice !== '' ? formatRupees(rowProfit * 100) : '-'}
                                         </div>
-                                        {selectedStock && item.sellingPrice !== '' && rowProfit < 0 && (
+                                        {selectedEntity && item.sellingPrice !== '' && rowProfit < 0 && (
                                             <div style={{ fontSize: 11, color: 'var(--alert-color)', marginTop: 4, textAlign: 'right' }}>
                                                 Below cost
                                             </div>
@@ -266,7 +234,7 @@ export function AddSaleModal({ onClose }) {
                     })}
 
                     <button type="button" onClick={addItem} className="btn btn-outline" style={{ marginTop: 10, width: '100%', borderStyle: 'dashed' }}>
-                        <Plus size={16}/> Add Product
+                        <Plus size={16}/> Add Item
                     </button>
 
                     <div className="flex justify-between items-center" style={{ marginTop: 24, padding: '16px 0', borderTop: '1px solid var(--border-color)', fontSize: 16 }}>

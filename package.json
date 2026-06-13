@@ -8,6 +8,9 @@
     "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend"
   },
   "dependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.7",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.1",
@@ -16,5 +19,20 @@
     "pg": "^8.21.0",
     "sqlite3": "^6.0.1",
     "uuid": "^10.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haseebuu2004-crypto/life-care-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/haseebuu2004-crypto/life-care-app/issues"
+  },
+  "homepage": "https://github.com/haseebuu2004-crypto/life-care-app#readme"
 }

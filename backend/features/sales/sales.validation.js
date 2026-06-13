@@ -7,8 +7,8 @@ exports.addSaleSchema = {
         customer_name: z.string().optional().nullable(),
         sale_date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date" }),
         items: z.array(z.object({
-            product_version_id: z.string().uuid("Invalid product version ID"),
-            flavour_id: z.string().uuid("Invalid flavour ID").optional().nullable(),
+            productVersionId: z.string().uuid("Invalid product version ID"),
+            inventoryId: z.string().uuid("Invalid inventory ID"),
             quantity: z.number().int().positive("Quantity must be positive"),
             price_charged: z.number().int().nonnegative("Price charged must be non-negative"),
             standard_price_snap: z.number().int().nonnegative("Standard price snap must be non-negative"),

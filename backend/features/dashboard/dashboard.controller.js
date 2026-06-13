@@ -7,10 +7,10 @@ exports.getStats = async (req, res) => {
         
         const now = new Date();
         if (!startDate) {
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA');
         }
         if (!endDate) {
-            endDate = now.toISOString().split('T')[0];
+            endDate = now.toLocaleDateString('en-CA');
         }
 
         const result = await dashboardService.getStats(ownerId, startDate, endDate);
@@ -21,6 +21,9 @@ exports.getStats = async (req, res) => {
         
         res.json({ success: true, data: result.data });
     } catch (error) {
+        if (error.message && error.message.includes('Unauthorized')) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
         console.error("Dashboard Stats Error:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
@@ -111,8 +114,8 @@ exports.clearSalesData = async (req, res) => {
 exports.requestResetOtp = async (req, res) => {
     try {
         const { password } = req.body;
-        const msg = await dashboardService.requestResetOtp(req.user.id, req.user.email, password);
-        return res.json({ success: true, message: msg });
+        const result = await dashboardService.requestResetOtp(req.user.id, req.user.email, password);
+        return res.json({ success: true, message: result.message, expires_at: result.expiresAt, server_time: new Date().toISOString() });
     } catch (error) {
         if (error.message === "Password is required" || error.message === "Invalid confirmation phrase" || error.message.includes("OTP")) {
             return res.status(400).json({ success: false, message: error.message });
@@ -131,10 +134,10 @@ exports.requestResetOtp = async (req, res) => {
 exports.confirmReset = async (req, res) => {
     try {
         const ownerId = req.user.owner_id || req.user.id;
-        const { password, confirmText, otp } = req.body;
+        const { password, confirmText, otp, modules } = req.body;
         
-        await dashboardService.confirmReset(ownerId, req.user.id, password, confirmText, otp);
-        res.json({ success: true, message: "System reset successful. All sales and attendance cleared, stock restored." });
+        await dashboardService.confirmReset(ownerId, req.user.id, password, confirmText, otp, modules);
+        res.json({ success: true, message: "Selected modules have been reset successfully." });
     } catch (error) {
         if (error.message.includes("required") || error.message.includes("confirmation") || error.message.includes("OTP")) {
             return res.status(400).json({ success: false, message: error.message });

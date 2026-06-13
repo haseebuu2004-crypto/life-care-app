@@ -138,8 +138,8 @@ function DashboardInner() {
                 <div className="card" style={{ marginBottom: 30, background: 'var(--alert-bg)', borderColor: 'var(--alert-color)' }}>
                     <h3 style={{ marginBottom: 15, color: 'var(--alert-color)' }}>Low Stock Products</h3>
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                        {lowStock.map(s => (
-                            <li key={s.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between' }}>
+                        {lowStock.map((s, idx) => (
+                            <li key={`lowstock-${s.id || s.product_name || idx}`} style={{ padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between' }}>
                                 <span><strong>{s.product_name}</strong></span>
                                 <span style={{ color: 'var(--alert-color)', fontWeight: 'bold' }}>{s.qty} left</span>
                             </li>
@@ -159,7 +159,7 @@ function DashboardInner() {
                             <thead><tr><th>Product Name</th><th className="text-right">Total Sold</th></tr></thead>
                             <tbody>
                                 {(d.monthlyProductSales || []).map((item, idx) => (
-                                    <tr key={item.name} style={{ background: idx === 0 ? '#fdf8e4' : 'transparent' }}>
+                                    <tr key={`sales-${item.name || idx}`} style={{ background: idx === 0 ? '#fdf8e4' : 'transparent' }}>
                                         <td>
                                             <strong>{item.name}</strong>
                                             {idx === 0 && <span style={{ marginLeft: 10, fontSize: 12, background: 'orange', color: 'white', padding: '2px 8px', borderRadius: 12 }}>Top Seller</span>}
@@ -185,7 +185,7 @@ function DashboardInner() {
                                 <thead><tr><th>Customer</th><th className="text-right">Total Profit</th></tr></thead>
                                 <tbody>
                                     {(d.topCustomers || []).map((item, idx) => (
-                                        <tr key={item.name}>
+                                        <tr key={`cust-${item.name || idx}`}>
                                             <td>
                                                 <strong>{item.name}</strong>
                                                 {idx === 0 && <span style={{ marginLeft: 10, fontSize: 12, background: 'var(--primary-color)', color: 'white', padding: '2px 8px', borderRadius: 12 }}>Top Customer</span>}
@@ -215,8 +215,8 @@ function DashboardInner() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(d.shakeProfitDetails || []).map(item => (
-                                        <tr key={item.name}>
+                                    {(d.shakeProfitDetails || []).map((item, idx) => (
+                                        <tr key={`shake-${item.name || idx}`}>
                                             <td><strong>{item.name}</strong></td>
                                             <td className="text-right">{item.attendance}</td>
                                             <td className="text-right"><strong style={{ color: 'var(--accent-color)' }}>{formatRupees((item.totalProfit || 0) * 100)}</strong></td>

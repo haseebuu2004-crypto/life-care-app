@@ -12,5 +12,12 @@ exports.validateAttendance = (req, res, next) => {
         return res.status(400).json({ success: false, message: "Valid customer selection is required." });
     }
 
+    if (date) {
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        if (date > todayStr) {
+            return res.status(400).json({ success: false, message: "Attendance cannot be marked for future dates." });
+        }
+    }
+
     next();
 };
