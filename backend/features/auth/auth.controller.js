@@ -15,8 +15,8 @@ exports.login = async (req, res) => {
 
         res.cookie('session_token', sessionId, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true, // Required for SameSite=None
+            sameSite: 'none', // Required for cross-domain cookies (Vercel to Render)
             maxAge: 8 * 3600000
         });
 
@@ -58,7 +58,7 @@ exports.changePassword = async (req, res) => {
             const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
             const ua = req.headers['user-agent'] || '';
             const sessionId = await authService.createNewSession(req.user.id, ip, ua);
-            res.cookie('session_token', sessionId, { httpOnly: true, sameSite: 'lax', maxAge: 8 * 3600000 });
+            res.cookie('session_token', sessionId, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 8 * 3600000 });
         }
 
         res.json({ success: true, message: "Password updated successfully" });
