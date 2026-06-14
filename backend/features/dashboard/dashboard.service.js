@@ -361,31 +361,7 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
                 return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
             }
         } catch (emailErr) {
-            console.error("SMTP Email failed, trying Telegram fallback:", emailErr.message);
-            
-            if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
-                try {
-                    const tgRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: process.env.TELEGRAM_CHAT_ID,
-                            text: `🚨 *Data Reset OTP*\n\nYour OTP for hard resetting all club data is: *${otpCode}*.\n\nThis code will expire in 10 minutes.\nIf you did not request this, change your password immediately.`,
-                            parse_mode: 'Markdown'
-                        })
-                    });
-                    
-                    if (tgRes.ok) {
-                        return { message: "Email blocked by Gmail, but OTP was sent to your Telegram!", expiresAt: expiresAtIso };
-                    } else {
-                        const tgErr = await tgRes.text();
-                        console.error("Telegram fallback failed:", tgErr);
-                    }
-                } catch (tgNetErr) {
-                    console.error("Telegram network error:", tgNetErr.message);
-                }
-            }
-
+            console.error("SMTP Email failed, falling back to console:", emailErr.message);
             console.log(`[FALLBACK EMAIL] OTP sent to admin: ${otpCode}`);
             return { message: "Email failed to send. Check server console for OTP.", expiresAt: expiresAtIso };
         }
