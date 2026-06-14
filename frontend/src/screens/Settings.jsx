@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Package, Users, Clock, Database, Key, Eye, EyeOff } from 'lucide-react';
 import { Stock } from './Stock';
 import { UserManagement } from './UserManagement';
@@ -75,8 +75,11 @@ export function Settings({ userOnly = false }) {
     }, [otpExpiresAt]);
 
     const [otpLoading, setOtpLoading] = useState(false);
+    const otpLoadingRef = useRef(false);
 
     const handleRequestOtp = async () => {
+        if (otpLoadingRef.current) return;
+        otpLoadingRef.current = true;
         setOtpLoading(true);
         try {
             const res = await api.post('/system/reset/request-otp', { password: resetPassword });
@@ -93,6 +96,7 @@ export function Settings({ userOnly = false }) {
         } catch (error) {
             useStore.getState().showToast(error.response?.data?.message || "Failed to generate OTP", "error");
         } finally {
+            otpLoadingRef.current = false;
             setOtpLoading(false);
         }
     };
