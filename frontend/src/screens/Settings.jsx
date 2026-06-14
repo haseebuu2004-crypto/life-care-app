@@ -74,10 +74,13 @@ export function Settings({ userOnly = false }) {
         };
     }, [otpExpiresAt]);
 
+    const [otpLoading, setOtpLoading] = useState(false);
+
     const handleRequestOtp = async () => {
+        setOtpLoading(true);
         try {
             const res = await api.post('/system/reset/request-otp', { password: resetPassword });
-            useStore.getState().showToast("OTP sent to your email.", "success");
+            useStore.getState().showToast(res.data?.message || "OTP generated.", "success");
             if (res.data.expires_at) {
                 const serverTime = res.data.server_time ? new Date(res.data.server_time).getTime() : Date.now();
                 setClockSkew(serverTime - Date.now());
@@ -89,6 +92,8 @@ export function Settings({ userOnly = false }) {
             setResetStep(2);
         } catch (error) {
             useStore.getState().showToast(error.response?.data?.message || "Failed to generate OTP", "error");
+        } finally {
+            setOtpLoading(false);
         }
     };
 
@@ -237,7 +242,9 @@ export function Settings({ userOnly = false }) {
                                 </div>
                                 <div style={{ display: 'flex', gap: 10 }}>
                                     <button className="btn btn-outline" onClick={() => { setResetStep(0); setResetPassword(''); }}>Cancel</button>
-                                    <button className="btn btn-danger" onClick={handleRequestOtp} disabled={!resetPassword}>Next</button>
+                                    <button className="btn btn-danger" onClick={handleRequestOtp} disabled={!resetPassword || otpLoading}>
+                                        {otpLoading ? 'Sending...' : 'Next'}
+                                    </button>
                                 </div>
                             </div>
                         )}
