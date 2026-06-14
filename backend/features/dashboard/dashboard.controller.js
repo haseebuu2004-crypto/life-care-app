@@ -114,7 +114,8 @@ exports.clearSalesData = async (req, res) => {
 exports.requestResetOtp = async (req, res) => {
     try {
         const { password } = req.body;
-        const result = await dashboardService.requestResetOtp(req.user.id, req.user.email, password);
+        const origin = req.headers.origin;
+        const result = await dashboardService.requestResetOtp(req.user.id, req.user.email, password, origin);
         return res.json({ success: true, message: result.message, expires_at: result.expiresAt, server_time: new Date().toISOString() });
     } catch (error) {
         if (error.message === "Password is required" || error.message === "Invalid confirmation phrase" || error.message.includes("OTP")) {

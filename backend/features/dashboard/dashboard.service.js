@@ -303,7 +303,7 @@ exports.clearSalesData = async (ownerId, userId, month) => {
     }
 };
 
-exports.requestResetOtp = async (userId, email, password) => {
+exports.requestResetOtp = async (userId, email, password, origin) => {
     if (!password) throw new Error("Password is required");
     
     const userQuery = queries.getUserPasswordHash(userId);
@@ -327,13 +327,38 @@ exports.requestResetOtp = async (userId, email, password) => {
     
     if (process.env.SMTP_USER) {
         try {
-            await transporter.sendMail({
-                from: '"Life Care System" <noreply@lifecare.com>',
-                to: email,
-                subject: 'Data Reset OTP - Life Care System',
-                text: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`
-            });
-            return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
+            // Proxy via Vercel frontend to bypass Render SMTP port blocking
+            if (origin) {
+                const proxyRes = await fetch(`${origin}/api/send-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: email,
+                        subject: 'Data Reset OTP - Life Care System',
+                        text: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`,
+                        host: process.env.SMTP_HOST,
+                        port: process.env.SMTP_PORT,
+                        user: process.env.SMTP_USER,
+                        pass: process.env.SMTP_PASS
+                    })
+                });
+                
+                if (!proxyRes.ok) {
+                    const errText = await proxyRes.text();
+                    throw new Error(`Vercel proxy failed: ${errText}`);
+                }
+                
+                return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
+            } else {
+                // Fallback to local SMTP (works locally, blocked on Render)
+                await transporter.sendMail({
+                    from: '"Life Care System" <noreply@lifecare.com>',
+                    to: email,
+                    subject: 'Data Reset OTP - Life Care System',
+                    text: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`
+                });
+                return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
+            }
         } catch (emailErr) {
             console.error("SMTP Email failed, falling back to console:", emailErr.message);
             console.log(`[FALLBACK EMAIL] OTP sent to admin: ${otpCode}`);
