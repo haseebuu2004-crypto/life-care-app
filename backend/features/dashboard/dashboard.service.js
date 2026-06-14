@@ -350,13 +350,13 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
             
             return { message: "OTP sent to your email.", expiresAt: expiresAtIso };
         } catch (emailErr) {
-            console.error("EmailJS Email failed, falling back to console:", emailErr.message);
+            console.error("EmailJS Email failed:", emailErr.message);
             console.log(`[FALLBACK EMAIL] OTP sent to admin: ${otpCode}`);
-            return { message: "Email failed to send. Check server console for OTP.", expiresAt: expiresAtIso };
+            return { message: "Failed to send OTP email. Please try again later.", expiresAt: expiresAtIso };
         }
     } else {
         console.log(`[STUB EMAIL] OTP sent to admin: ${otpCode}`);
-        return { message: "OTP generated successfully. Check server console.", expiresAt: expiresAtIso };
+        return { message: "Email service is not configured. Please contact the administrator.", expiresAt: expiresAtIso };
     }
 };
 
