@@ -325,7 +325,7 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
     
     const expiresAtIso = new Date(expiresAtMs).toISOString();
     
-    if (process.env.EMAILJS_SERVICE_ID) {
+    if (process.env.EMAILJS_PUBLIC_KEY) {
         try {
             const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
                 method: 'POST',
