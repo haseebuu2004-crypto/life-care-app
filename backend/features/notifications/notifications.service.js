@@ -1,17 +1,4 @@
 const queries = require('./notifications.queries');
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-    port: process.env.SMTP_PORT || 587,
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/["']/g, "").replace(/\s/g, "") : ""
-    },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000
-});
 
 exports.createNotification = async (userId, type, title, body, data, sendEmail = false) => {
     try {
@@ -19,13 +6,33 @@ exports.createNotification = async (userId, type, title, body, data, sendEmail =
 
         if (sendEmail && process.env.SMTP_USER) {
             const userRes = await queries.getUserEmail(userId);
-            if (userRes.rows.length > 0) {
-                await transporter.sendMail({
-                    from: '"Life Care System" <noreply@lifecare.com>',
-                    to: userRes.rows[0].email,
-                    subject: title,
-                    text: body
-                });
+            if (process.env.SMTP_USER) {
+                if (process.env.EMAILJS_PUBLIC_KEY) {
+                    try {
+                        const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                service_id: 'service_xw04039',
+                                template_id: 'template_1a2mg5b',
+                                user_id: process.env.EMAILJS_PUBLIC_KEY,
+                                accessToken: process.env.EMAILJS_PRIVATE_KEY,
+                                template_params: {
+                                    to_email: userRes.rows[0].email,
+                                    subject: title,
+                                    message: body
+                                }
+                            })
+                        });
+                        if (!emailjsRes.ok) {
+                            console.error("EmailJS Notification failed:", await emailjsRes.text());
+                        }
+                    } catch (emailErr) {
+                        console.error('Failed to send notification via EmailJS:', emailErr);
+                    }
+                } else {
+                    console.error('EMAILJS_PUBLIC_KEY not configured, cannot send notification.');
+                }
             }
         }
         return res.rows[0];
