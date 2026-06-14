@@ -4,19 +4,6 @@ const queries = require('./auth.queries');
 const audit = require('../../shared/services/auditLogService');
 const notificationService = require('../notifications/notifications.service'); // Same relative path from features/auth as features/settings
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-    port: process.env.SMTP_PORT || 587,
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/["']/g, "").replace(/\s/g, "") : ""
-    },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000
-});
 
 const MAX_ACTIVE_SESSIONS = 3;
 class AuthService {
@@ -134,17 +121,31 @@ class AuthService {
             const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${rawToken}`;
             
             if (process.env.SMTP_USER) {
-                try {
-                    await transporter.sendMail({
-                        from: '"Life Care System" <noreply@lifecare.com>',
-                        to: registeredEmail,
-                        subject: "Password Reset Request",
-                        text: `You requested a password reset. Please use the following link to reset your password. This link is valid for 15 minutes.\n\n${resetLink}\n\nIf you did not request this, please ignore this email.`
-                    });
-                } catch (err) {
-                    // Log delivery failure without exposing the token
-                    console.error("SMTP delivery failed for password reset:", err.message);
-                    console.log(`[FALLBACK] Password reset email queued for user ${userId}`);
+                if (process.env.EMAILJS_PUBLIC_KEY) {
+                    try {
+                        const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                service_id: 'service_xw04039',
+                                template_id: 'template_1a2mg5b',
+                                user_id: process.env.EMAILJS_PUBLIC_KEY,
+                                accessToken: process.env.EMAILJS_PRIVATE_KEY,
+                                template_params: {
+                                    to_email: registeredEmail,
+                                    subject: 'Password Reset - Life Care System',
+                                    message: `You requested a password reset. Please use the following link to reset your password. This link is valid for 15 minutes.\n\n${resetLink}\n\nIf you did not request this, please ignore this email.`
+                                }
+                            })
+                        });
+                        if (!emailjsRes.ok) {
+                            console.error("EmailJS Auth failed:", await emailjsRes.text());
+                        }
+                    } catch (emailErr) {
+                        console.error('Failed to send reset email via EmailJS:', emailErr);
+                    }
+                } else {
+                    console.error('EMAILJS_PUBLIC_KEY not configured, cannot send reset email.');
                 }
             } else {
                 // Development-only stub — still avoids logging the raw token in production
