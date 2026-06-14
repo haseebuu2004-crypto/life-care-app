@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
     port: process.env.SMTP_PORT || 587,
     auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/["']/g, "").replace(/\s/g, "") : ""
     },
     connectionTimeout: 5000,
     greetingTimeout: 5000,
@@ -329,6 +329,7 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
         try {
             // Proxy via Vercel frontend to bypass Render SMTP port blocking
             if (origin) {
+                const cleanPass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/["']/g, "").replace(/\s/g, "") : "";
                 const proxyRes = await fetch(`${origin}/api/send-email`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -339,7 +340,7 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
                         host: process.env.SMTP_HOST,
                         port: process.env.SMTP_PORT,
                         user: process.env.SMTP_USER,
-                        pass: process.env.SMTP_PASS
+                        pass: cleanPass
                     })
                 });
                 

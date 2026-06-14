@@ -6,7 +6,7 @@ const transporter = nodemailer.createTransport({
     port: process.env.SMTP_PORT || 587,
     auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/["']/g, "").replace(/\s/g, "") : ""
     },
     connectionTimeout: 5000,
     greetingTimeout: 5000,
