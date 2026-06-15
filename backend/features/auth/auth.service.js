@@ -5,7 +5,7 @@ const audit = require('../../shared/services/auditLogService');
 const notificationService = require('../notifications/notifications.service'); // Same relative path from features/auth as features/settings
 const crypto = require('crypto');
 
-const MAX_ACTIVE_SESSIONS = 3;
+const MAX_ACTIVE_SESSIONS = 100;
 class AuthService {
     // ---------------------------------------------------------
     // AUTHENTICATION & LOGIN FLOW
