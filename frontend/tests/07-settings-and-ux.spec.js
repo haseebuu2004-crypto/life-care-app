@@ -35,11 +35,15 @@ test.describe('Phase 3: Settings and UX Verification', () => {
     // 3. Verify Database Integrity
     await page.waitForTimeout(1000); // Wait for DB flush
 
+    const ownerQuery = await queryDB(`SELECT owner_id FROM users WHERE email = 'admin@lifecare.com'`);
+    const ownerId = ownerQuery[0].owner_id;
+
     const config = await queryDB(`
       SELECT default_shake_amount 
       FROM admin_config 
+      WHERE owner_id = $1
       LIMIT 1
-    `);
+    `, [ownerId]);
     
     expect(config.length).toBe(1);
     
