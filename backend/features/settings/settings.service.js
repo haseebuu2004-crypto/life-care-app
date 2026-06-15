@@ -141,6 +141,11 @@ class SettingsService {
     async completeSetup(ownerId, adminUserId) {
         const q = queries.completeSetup(ownerId);
         await db.query(q.text, q.values);
+        
+        // Invalidate dashboard cache so SetupWizard correctly unmounts
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidatePattern(ownerId, 'dashboard_stats_*');
+        
         await audit.logAction(adminUserId, 'SETUP_COMPLETE', 'admin_config', ownerId);
     }
 
