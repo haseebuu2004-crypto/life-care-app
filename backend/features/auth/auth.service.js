@@ -50,7 +50,7 @@ class AuthService {
             await notificationService.createNotification(
                 user.id, 'new_login', 'New login to your account',
                 `Login detected from ${ua} at ${ip}. If this was not you, change your password immediately.`,
-                { ip_address: ip, device_info: ua, created_at: new Date() }, true
+                { ip_address: ip, device_info: ua, created_at: new Date() }, false
             );
         }
 
