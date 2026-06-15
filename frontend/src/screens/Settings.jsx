@@ -46,6 +46,7 @@ export function Settings({ userOnly = false }) {
         sales_and_stock: false,
         products: false
     });
+    const [confirmLoading, setConfirmLoading] = useState(false);
 
     useEffect(() => {
         if (!otpExpiresAt) return;
@@ -102,6 +103,7 @@ export function Settings({ userOnly = false }) {
     };
 
     const handleConfirmReset = async () => {
+        setConfirmLoading(true);
         try {
             const selectedModules = Object.keys(resetModules).filter(k => resetModules[k]);
             await api.post('/system/reset/confirm', {
@@ -121,6 +123,8 @@ export function Settings({ userOnly = false }) {
             useStore.getState().fetchData();
         } catch (error) {
             useStore.getState().showToast(error.response?.data?.message || "Reset failed", "error");
+        } finally {
+            setConfirmLoading(false);
         }
     };
 
@@ -279,7 +283,9 @@ export function Settings({ userOnly = false }) {
                                 <div style={{ display: 'flex', gap: 10 }}>
                                     <button className="btn btn-outline" onClick={() => setResetStep(2)}>Back</button>
                                     {otpSecondsLeft > 0 ? (
-                                        <button className="btn btn-danger" onClick={handleConfirmReset} disabled={resetOtp.length !== 6}>Confirm Reset</button>
+                                        <button className="btn btn-danger" onClick={handleConfirmReset} disabled={resetOtp.length !== 6 || confirmLoading}>
+                                            {confirmLoading ? 'Confirming...' : 'Confirm Reset'}
+                                        </button>
                                     ) : (
                                         <button className="btn btn-primary" onClick={() => { setResetStep(1); setResetOtp(''); setResetPassword(''); setOtpExpiresAt(null); setClockSkew(0); }}>Resend OTP</button>
                                     )}
