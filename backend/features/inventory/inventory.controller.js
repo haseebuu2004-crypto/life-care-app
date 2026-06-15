@@ -2,7 +2,7 @@ const inventoryService = require('./inventory.service');
 
 exports.getEntities = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const ownerId = req.user.owner_id || req.user.id;
         const entities = await inventoryService.getEntities(ownerId);
         res.status(200).json(entities);
     } catch (error) {
@@ -12,7 +12,7 @@ exports.getEntities = async (req, res) => {
 
 exports.searchEntities = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const ownerId = req.user.owner_id || req.user.id;
         const q = req.query.q;
         const entities = await inventoryService.searchEntities(ownerId, q);
         res.status(200).json(entities);
@@ -23,7 +23,7 @@ exports.searchEntities = async (req, res) => {
 
 exports.updateEntity = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const ownerId = req.user.owner_id || req.user.id;
         const userId = req.user.id; // Assuming user ID is the same for logging, or you have a distinct token
         const variantId = req.params.id;
         const data = req.body;
