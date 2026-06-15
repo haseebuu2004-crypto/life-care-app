@@ -305,36 +305,73 @@ exports.importCSV = async (ownerId, userId, type, fileBuffer) => {
                 importedCount++;
             }
         } else if (type === 'products') {
-            const nameIdx = headers.indexOf('name');
-            const vpIdx = headers.indexOf('vendor_price');
-            const qtyIdx = headers.indexOf('stock_quantity');
+            const prodQueries = require('../products/products.queries');
             
+            const nameAliases = ['name', 'product name', 'item name', 'product', 'item'];
+            const priceAliases = ['vendor_price', 'price', 'cost', 'vendor price', 'amount', 'unit price'];
+            const vpAliases = ['volume_points', 'vp', 'volume points', 'points'];
+            const flavorAliases = ['flavor', 'flavors', 'flavour', 'flavours', 'variant', 'variants', 'types'];
+
+            const cleanHeaders = headers.map(h => h.toLowerCase().replace(/[^a-z_]/g, ' ').trim());
+            
+            const nameIdx = cleanHeaders.findIndex(h => nameAliases.includes(h) || nameAliases.includes(h.replace(/ /g, '_')));
+            const vpIdx = cleanHeaders.findIndex(h => priceAliases.includes(h) || priceAliases.includes(h.replace(/ /g, '_')));
+            const volPtsIdx = cleanHeaders.findIndex(h => vpAliases.includes(h) || vpAliases.includes(h.replace(/ /g, '_')));
+            const flavorIdx = cleanHeaders.findIndex(h => flavorAliases.includes(h) || flavorAliases.includes(h.replace(/ /g, '_')));
+
             if (nameIdx === -1 || vpIdx === -1) {
-                throw new Error("CSV must contain 'name' and 'vendor_price' columns");
+                throw new Error("CSV must contain columns for Product Name and Price.");
             }
 
             for (let i = 1; i < lines.length; i++) {
-                const cols = lines[i].split(',').map(c => c.trim());
+                // Split by comma, ignoring commas inside double quotes
+                const cols = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim());
                 if (!cols[nameIdx]) continue;
 
-                const name = cols[nameIdx];
-                const vp = Math.round(Number(cols[vpIdx]) * 100);
-                const qty = qtyIdx !== -1 ? parseInt(cols[qtyIdx]) || 0 : 0;
+                const name = cols[nameIdx].replace(/^"|"$/g, '').trim();
+                if (name === '') continue;
 
-                const prodQ = queries.insertProduct(ownerId, name);
-                const prodRes = await client.query(prodQ.text, prodQ.values);
+                const vendorPriceRaw = cols[vpIdx].replace(/[^0-9.]/g, '');
+                const vp = Math.round(Number(vendorPriceRaw || 0) * 100);
+                
+                const volumePointsRaw = volPtsIdx !== -1 ? cols[volPtsIdx].replace(/[^0-9.]/g, '') : '0';
+                const volumePoints = parseFloat(volumePointsRaw) || 0;
+                
+                const flavorStr = flavorIdx !== -1 ? cols[flavorIdx].replace(/^"|"$/g, '').trim() : '';
+
+                const prodRes = await prodQueries.insertProduct(client, ownerId, name);
                 const productId = prodRes.rows[0].id;
 
-                const verQ = queries.insertProductVersion(productId, vp, userId);
-                const pvRes = await client.query(verQ.text, verQ.values);
+                const pvRes = await prodQueries.insertProductVersion(client, productId, vp, volumePoints, userId, '1');
                 const versionId = pvRes.rows[0].id;
 
-                const variantQ = queries.insertVariant(productId, ownerId, 'Standard');
-                const variantRes = await client.query(variantQ.text, variantQ.values);
-                const variantId = variantRes.rows[0].id;
+                if (flavorStr && flavorStr !== '') {
+                    // Flavors might be separated by commas, semicolons, or pipes
+                    const flavorsList = flavorStr.split(/[;,|]/).map(f => f.trim()).filter(f => f !== '');
+                    const uniqueFlavorsMap = new Map();
+                    for (const f of flavorsList) {
+                        uniqueFlavorsMap.set(f.toLowerCase(), f);
+                    }
+                    if (uniqueFlavorsMap.size === 0) {
+                        await prodQueries.insertVariant(client, versionId, ownerId, 'Standard');
+                    } else {
+                        for (const cleanFlavour of uniqueFlavorsMap.values()) {
+                            await prodQueries.insertVariant(client, versionId, ownerId, cleanFlavour);
+                        }
+                    }
+                } else {
+                    await prodQueries.insertVariant(client, versionId, ownerId, 'Standard');
+                }
 
-                const stockQ = queries.insertInitialStock(versionId, variantId, ownerId, qty, vp, userId);
-                await client.query(stockQ.text, stockQ.values);
+                await client.query(`
+                    UPDATE variants v
+                    SET sku = UPPER(SUBSTRING(p.name FROM 1 FOR 3)) || '-' || UPPER(SUBSTRING(v.name FROM 1 FOR 4)) || '-' || UPPER(SUBSTRING(md5(random()::text) FROM 1 FOR 4))
+                    FROM product_versions pv
+                    JOIN products p ON p.id = pv.product_id
+                    WHERE v.product_version_id = pv.id 
+                      AND pv.id = $1 
+                      AND (v.sku IS NULL OR v.sku = '')
+                `, [versionId]);
                 
                 importedCount++;
             }
