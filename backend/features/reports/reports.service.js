@@ -104,7 +104,7 @@ exports.exportPDF = async (ownerId, type, range) => {
 
         if (type === 'sales') {
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL REVENUE', { align: 'left' });
-            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`₹${(data.total || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
+            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`Rs. ${(data.total || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
 
             const table = {
                 headers: ["Date", "Customer", "Product", "Quantity", "Amount", "Profit"],
@@ -113,8 +113,8 @@ exports.exportPDF = async (ownerId, type, range) => {
                     r.customer || 'Unknown',
                     r.product || 'Unknown',
                     (r.quantity || 0).toString(),
-                    `₹${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
-                    `₹${((r.item_profit || 0) / 100).toFixed(2)}`
+                    `Rs. ${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
+                    `Rs. ${((r.item_profit || 0) / 100).toFixed(2)}`
                 ])
             };
             if (table.rows.length > 0) {
@@ -124,7 +124,7 @@ exports.exportPDF = async (ownerId, type, range) => {
             }
         } else if (type === 'attendance') {
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SHAKE PROFIT', { align: 'left' });
-            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`₹${(data.profit || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
+            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`Rs. ${(data.profit || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
 
             const table = {
                 headers: ["Date", "Customer", "Type", "Profit"],
@@ -132,7 +132,7 @@ exports.exportPDF = async (ownerId, type, range) => {
                     r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('en-CA') : 'N/A',
                     r.name || 'Unknown',
                     r.type || 'N/A',
-                    `₹${((r.shake_amount || 0) / 100).toFixed(2)}`
+                    `Rs. ${((r.shake_amount || 0) / 100).toFixed(2)}`
                 ])
             };
             if (table.rows.length > 0) {
@@ -142,13 +142,13 @@ exports.exportPDF = async (ownerId, type, range) => {
             }
         } else if (type === 'summary') {
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SALES REVENUE');
-            doc.font('Helvetica-Bold').fontSize(20).fillColor('#0f172a').text(`₹${((data.sales?.rev || 0) / 100).toFixed(2)}`).moveDown(1);
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#0f172a').text(`Rs. ${((data.sales?.rev || 0) / 100).toFixed(2)}`).moveDown(1);
             
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SALES PROFIT');
-            doc.font('Helvetica-Bold').fontSize(20).fillColor('#10b981').text(`₹${((data.sales?.prof || 0) / 100).toFixed(2)}`).moveDown(1);
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#10b981').text(`Rs. ${((data.sales?.prof || 0) / 100).toFixed(2)}`).moveDown(1);
 
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL ATTENDANCE PROFIT');
-            doc.font('Helvetica-Bold').fontSize(20).fillColor('#8b5cf6').text(`₹${((data.attendance?.att_prof || 0) / 100).toFixed(2)}`).moveDown(1);
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#8b5cf6').text(`Rs. ${((data.attendance?.att_prof || 0) / 100).toFixed(2)}`).moveDown(1);
 
             doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL ACTIVE CUSTOMERS');
             doc.font('Helvetica-Bold').fontSize(20).fillColor('#f59e0b').text(`${data.customers?.count || 0}`).moveDown(2);
@@ -162,8 +162,8 @@ exports.exportPDF = async (ownerId, type, range) => {
                         r.customer || 'Unknown',
                         r.product || 'Unknown',
                         (r.quantity || 0).toString(),
-                        `₹${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
-                        `₹${((r.item_profit || 0) / 100).toFixed(2)}`
+                        `Rs. ${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
+                        `Rs. ${((r.item_profit || 0) / 100).toFixed(2)}`
                     ])
                 };
                 await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
@@ -178,7 +178,7 @@ exports.exportPDF = async (ownerId, type, range) => {
                         r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('en-CA') : 'N/A',
                         r.name || 'Unknown',
                         r.type || 'N/A',
-                        `₹${((r.shake_amount || 0) / 100).toFixed(2)}`
+                        `Rs. ${((r.shake_amount || 0) / 100).toFixed(2)}`
                     ])
                 };
                 await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
