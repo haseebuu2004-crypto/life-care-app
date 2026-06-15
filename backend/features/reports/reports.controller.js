@@ -42,6 +42,15 @@ exports.importCSV = async (req, res) => {
         
         await audit.logAction(req.user.id, 'IMPORT_CSV', type, null);
         
+        // Invalidate caches to ensure frontend sees fresh data
+        const cache = require('../../shared/services/cacheService');
+        if (type === 'products') {
+            await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        } else if (type === 'customers') {
+            await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        }
+        
         if (type === 'customers' && result.missingIdCount > 0) {
             return res.json({
                 success: true,
