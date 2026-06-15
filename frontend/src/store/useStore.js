@@ -200,21 +200,44 @@ const useStore = create((set, get) => ({
             // Optimistic UI updates
             set((state) => {
                 const tempId = res.data?.product_id || Date.now();
+                const vPrice = payload.vendor_price ? Number(payload.vendor_price) : Number(payload.vp || 0);
+                const vPoints = payload.volume_points ? Number(payload.volume_points) : 0;
                 const newProduct = {
                     id: tempId,
                     version_id: tempId,
                     name: payload.name,
-                    vendor_price: payload.vendor_price ? Number(payload.vendor_price) : Number(payload.vp || 0),
-                    vp: payload.volume_points ? Number(payload.volume_points) : 0,
+                    vendor_price: vPrice,
+                    vp: vPoints,
                     version_label: payload.version_label || '1',
                     is_active: 1,
-                    flavours: payload.flavor ? payload.flavor.split(',').map(f => ({ id: Date.now(), name: f.trim(), is_active: 1 })) : [{ id: Date.now(), name: 'Standard', is_active: 1 }]
+                    flavours: payload.flavor ? payload.flavor.split(',').map(f => ({ id: Date.now() + Math.random(), name: f.trim(), is_active: 1 })) : [{ id: Date.now(), name: 'Standard', is_active: 1 }]
                 };
-                return { products: [...state.products, newProduct] };
+                
+                // Construct fake entities for ProductManager table to display instantly
+                const newEntities = newProduct.flavours.map(flav => ({
+                    inventoryId: flav.id,
+                    productVersionId: tempId,
+                    productId: tempId,
+                    displayName: flav.name === 'Standard' ? payload.name : `${payload.name} | ${flav.name}`,
+                    productName: payload.name,
+                    flavor: flav.name,
+                    sku: 'PENDING-SKU',
+                    vendorPrice: vPrice,
+                    vp: vPoints,
+                    stock: 0,
+                    isActive: true,
+                    lowStockThreshold: 5,
+                    alertEnabled: true
+                }));
+                
+                return { 
+                    products: [...state.products, newProduct],
+                    inventoryEntities: [...state.inventoryEntities, ...newEntities]
+                };
             });
 
             // Fetch in background to sync exact IDs
-            Promise.all([get().fetchProducts()]).catch(console.error);
+            Promise.all([get().fetchProducts(), get().fetchInventoryEntities()]).catch(console.error);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || error.response?.data?.error || 'Failed to add product';
@@ -240,14 +263,18 @@ const useStore = create((set, get) => ({
             // Optimistic UI updates
             set((state) => {
                 let newEntities = [...state.inventoryEntities];
-                const idx = newEntities.findIndex(e => e.inventoryId === payload.variant_id);
+                const targetId = payload.inventoryId || payload.variant_id;
+                const idx = newEntities.findIndex(e => e.inventoryId === targetId);
                 if (idx !== -1) {
+                    newEntities[idx] = { ...newEntities[idx] };
                     newEntities[idx].stock += parseInt(payload.quantity || 0);
+                    newEntities[idx].hasStockRecord = true;
                 }
                 
                 let newStock = [...state.stock];
-                const sIdx = newStock.findIndex(s => s.flavour_id === payload.variant_id);
+                const sIdx = newStock.findIndex(s => s.flavour_id === targetId);
                 if (sIdx !== -1) {
+                    newStock[sIdx] = { ...newStock[sIdx] };
                     newStock[sIdx].qty += parseInt(payload.quantity || 0);
                 }
                 
