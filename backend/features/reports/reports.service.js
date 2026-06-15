@@ -1,8 +1,6 @@
-const puppeteer = require('puppeteer');
 const ExcelJS = require('exceljs');
 const db = require('../../shared/db/connection');
 const queries = require('./reports.queries');
-const { generateReportHTML } = require('./reports.template');
 
 exports.generateReportData = async (ownerId, type, range) => {
     if (!ownerId) throw new Error('Unauthorized: missing ownerId');
@@ -89,28 +87,108 @@ exports.exportPDF = async (ownerId, type, range) => {
         const adminConfigRes = await db.query(confQ.text, confQ.values);
         const clubName = (adminConfigRes && adminConfigRes.rows && adminConfigRes.rows.length > 0) ? adminConfigRes.rows[0].club_name : '';
 
-        const html = generateReportHTML(type, data, clubName);
+        const PDFDocument = require('pdfkit-table');
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const buffers = [];
+        doc.on('data', buffers.push.bind(buffers));
 
-        const browser = await puppeteer.launch({ 
-            headless: 'new',
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--single-process',
-                '--no-zygote'
-            ]
+        let titlePrefix = '';
+        if (data && data.range === 'weekly') titlePrefix = 'WEEKLY ';
+        else if (data && data.range === 'monthly') titlePrefix = 'MONTHLY ';
+        else titlePrefix = 'ALL-TIME ';
+
+        // Header
+        doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`${clubName || 'BUSINESS'} REPORT`, { align: 'center' });
+        doc.font('Helvetica').fontSize(16).fillColor('#475569').text(`${titlePrefix}${type.toUpperCase()}`, { align: 'center' }).moveDown(0.5);
+        doc.fontSize(12).fillColor('#64748b').text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' }).moveDown(2);
+
+        if (type === 'sales') {
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL REVENUE', { align: 'left' });
+            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`₹${(data.total || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
+
+            const table = {
+                headers: ["Date", "Customer", "Product", "Quantity", "Amount", "Profit"],
+                rows: (data.rows || []).map(r => [
+                    r.sale_date ? new Date(r.sale_date).toLocaleDateString('en-CA') : 'N/A',
+                    r.customer || 'Unknown',
+                    r.product || 'Unknown',
+                    (r.quantity || 0).toString(),
+                    `₹${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
+                    `₹${((r.item_profit || 0) / 100).toFixed(2)}`
+                ])
+            };
+            if (table.rows.length > 0) {
+                await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
+            } else {
+                doc.font('Helvetica').fontSize(12).text('No records found.');
+            }
+        } else if (type === 'attendance') {
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SHAKE PROFIT', { align: 'left' });
+            doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f172a').text(`₹${(data.profit || 0).toFixed(2)}`, { align: 'left' }).moveDown(2);
+
+            const table = {
+                headers: ["Date", "Customer", "Type", "Profit"],
+                rows: (data.rows || []).map(r => [
+                    r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('en-CA') : 'N/A',
+                    r.name || 'Unknown',
+                    r.type || 'N/A',
+                    `₹${((r.shake_amount || 0) / 100).toFixed(2)}`
+                ])
+            };
+            if (table.rows.length > 0) {
+                await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
+            } else {
+                doc.font('Helvetica').fontSize(12).text('No records found.');
+            }
+        } else if (type === 'summary') {
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SALES REVENUE');
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#0f172a').text(`₹${((data.sales?.rev || 0) / 100).toFixed(2)}`).moveDown(1);
+            
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL SALES PROFIT');
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#10b981').text(`₹${((data.sales?.prof || 0) / 100).toFixed(2)}`).moveDown(1);
+
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL ATTENDANCE PROFIT');
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#8b5cf6').text(`₹${((data.attendance?.att_prof || 0) / 100).toFixed(2)}`).moveDown(1);
+
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#64748b').text('TOTAL ACTIVE CUSTOMERS');
+            doc.font('Helvetica-Bold').fontSize(20).fillColor('#f59e0b').text(`${data.customers?.count || 0}`).moveDown(2);
+
+            if (data.salesList && data.salesList.length > 0) {
+                doc.font('Helvetica-Bold').fontSize(16).fillColor('#0f172a').text('Sales Records').moveDown(1);
+                const table = {
+                    headers: ["Date", "Customer", "Product", "Quantity", "Amount", "Profit"],
+                    rows: data.salesList.map(r => [
+                        r.sale_date ? new Date(r.sale_date).toLocaleDateString('en-CA') : 'N/A',
+                        r.customer || 'Unknown',
+                        r.product || 'Unknown',
+                        (r.quantity || 0).toString(),
+                        `₹${((r.price_charged * r.quantity) / 100).toFixed(2)}`,
+                        `₹${((r.item_profit || 0) / 100).toFixed(2)}`
+                    ])
+                };
+                await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
+                doc.moveDown(2);
+            }
+
+            if (data.attendanceList && data.attendanceList.length > 0) {
+                doc.font('Helvetica-Bold').fontSize(16).fillColor('#0f172a').text('Attendance Records').moveDown(1);
+                const table = {
+                    headers: ["Date", "Customer", "Type", "Profit"],
+                    rows: data.attendanceList.map(r => [
+                        r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('en-CA') : 'N/A',
+                        r.name || 'Unknown',
+                        r.type || 'N/A',
+                        `₹${((r.shake_amount || 0) / 100).toFixed(2)}`
+                    ])
+                };
+                await doc.table(table, { prepareHeader: () => doc.font('Helvetica-Bold').fontSize(10), prepareRow: () => doc.font('Helvetica').fontSize(10) });
+            }
+        }
+
+        doc.end();
+        const pdfBuffer = await new Promise(resolve => {
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
         });
-        const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        
-        const pdfBuffer = await page.pdf({ 
-            format: 'A4',
-            printBackground: true,
-            margin: { top: '0', right: '0', bottom: '0', left: '0' }
-        });
-        
-        await browser.close();
 
         const slug = clubName ? `${clubName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_` : '';
         const filename = `${slug}${type}_report_${new Date().toLocaleDateString('en-CA')}.pdf`;
