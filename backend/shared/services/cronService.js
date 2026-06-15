@@ -26,7 +26,7 @@ class CronService {
         console.log(`CronService: Starting automated ${type} backup...`);
         try {
             // Get all unique owner_ids to backup each tenant
-            const { rows: admins } = await pool.query("SELECT id, username FROM users WHERE role = 'admin'");
+            const { rows: admins } = await pool.query("SELECT id, email FROM users WHERE role = 'admin'");
             
             for (const admin of admins) {
                 const ownerId = admin.id.toString();
@@ -49,7 +49,8 @@ class CronService {
                         buffer = Buffer.from(csvStr, 'utf-8');
                     }
 
-                    const fileName = `AUTO_${admin.username}_${backupService.generateFileName(type, format)}`;
+                    const safeEmail = admin.email ? admin.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_') : 'admin';
+                    const fileName = `AUTO_${safeEmail}_${backupService.generateFileName(type, format)}`;
                     
                     const fileUrl = await cloudStorageService.uploadBackup(buffer, fileName, mimeType);
 

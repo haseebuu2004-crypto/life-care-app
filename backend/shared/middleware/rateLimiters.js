@@ -3,14 +3,14 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 // Login endpoint: 5 requests per IP per 15 minutes
 exports.loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 10000,
     message: { success: false, message: 'Too many login attempts, please try again after 15 minutes' }
 });
 
 // Password reset: 3 requests per email per hour
 exports.passwordResetLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 3,
+    max: 10000,
     keyGenerator: (req, res) => req.body.email || ipKeyGenerator(req, res),
     message: { success: false, message: 'Too many password reset requests for this email. Try again in an hour.' }
 });
@@ -18,7 +18,7 @@ exports.passwordResetLimiter = rateLimit({
 // All API endpoints: 200 requests per user per minute
 exports.apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 200,
+    max: 20000,
     keyGenerator: (req, res) => req.user?.id || ipKeyGenerator(req, res),
     message: { success: false, message: 'Too many requests, please try again later.' }
 });
