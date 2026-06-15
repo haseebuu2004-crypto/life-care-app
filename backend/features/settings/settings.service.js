@@ -144,7 +144,7 @@ class SettingsService {
         
         // Invalidate dashboard cache so SetupWizard correctly unmounts
         const cache = require('../../shared/services/cacheService');
-        await cache.invalidatePattern(ownerId, 'dashboard_stats_*');
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
         
         await audit.logAction(adminUserId, 'SETUP_COMPLETE', 'admin_config', ownerId);
     }

@@ -60,6 +60,7 @@ export function SetupWizard({ onComplete }) {
     const handleStep1 = async (e) => {
         e.preventDefault();
         try {
+            setLoading(true);
             const res = await api.post('/products', { name: productName, vendor_price: vendorPrice });
             setProductId(res.data.product_id);
             await fetchProducts();
