@@ -56,9 +56,7 @@ export function DataManagement() {
         formData.append('file', importFile);
         formData.append('type', importType);
         try {
-            const res = await api.post('/reports/import', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const res = await api.post('/reports/import', formData);
             if (res.data.warning) {
                 // If warning is returned, display it explicitly
                 alert(`Warning: ${res.data.warning}`);
@@ -73,6 +71,7 @@ export function DataManagement() {
             } else {
                 useStore.getState().fetchProducts();
                 useStore.getState().fetchStock();
+                useStore.getState().fetchInventoryEntities();
             }
         } catch (error) {
             showToast(error.response?.data?.message || 'CSV Import failed', 'error');
