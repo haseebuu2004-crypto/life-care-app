@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const pool = new Pool({
     connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }, // Required for Supabase usually
-    max: 50 // Increased to 50 since PgBouncer handles the underlying queue
+    max: 15 // Lowered to 15 to strictly protect free-tier connection limits
 });
 
 pool.on('error', (err) => {

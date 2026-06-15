@@ -11,6 +11,7 @@ export default function Page() {
     
       if (!user) return <Navigate to="/login" replace />;
       if (user.role === 'master') return <Navigate to="/master" replace />;
+      if (user.role === 'user') return <Navigate to="/user/sales" replace />;
       return <Layout><Reports /></Layout>;
       
 }

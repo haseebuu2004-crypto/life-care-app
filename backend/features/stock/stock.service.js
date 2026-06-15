@@ -65,6 +65,7 @@ exports.addStock = async (ownerId, variantId, quantity, userId) => {
     await client.query('COMMIT');
     await audit.logAction(userId, 'STOCK_ADD', 'stock', null, null, { product_version_id: versionId, variant_id: variantId, quantity_added: quantity });
     await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+    await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
 } catch (error) {
     if (client) await client.query('ROLLBACK');
     console.error("addStock Error:", error);
@@ -86,6 +87,7 @@ exports.updateStockQuantity = async (ownerId, variantId, quantity, userId) => {
         
         await audit.logAction(userId, 'STOCK_UPDATE', 'stock', variantId, null, { new_quantity: quantity });
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
     } catch (error) {
         console.error("updateStockQuantity Error:", error);
         throw error;
@@ -100,6 +102,7 @@ exports.deleteStock = async (ownerId, variantId, userId) => {
         
         await audit.logAction(userId, 'STOCK_DELETE', 'stock', variantId);
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
     } catch (error) {
         console.error("deleteStock Error:", error);
         throw error;

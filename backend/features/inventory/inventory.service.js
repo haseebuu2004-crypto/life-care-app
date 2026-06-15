@@ -1,12 +1,20 @@
 const queries = require('./inventory.queries');
 const dto = require('./inventory.dto');
 const audit = require('../../shared/utils/audit');
+const cache = require('../../shared/services/cacheService');
 
 exports.getEntities = async (ownerId) => {
     if (!ownerId) throw new Error('Unauthorized: missing ownerId');
     try {
+        const cacheKey = `inventory_entities:${ownerId}`;
+        const cached = await cache.getCache(cacheKey);
+        if (cached) return cached;
+
         const result = await queries.getInventoryEntities(ownerId);
-        return result.rows.map(row => dto.mapToInventoryEntity(row));
+        const mapped = result.rows.map(row => dto.mapToInventoryEntity(row));
+        
+        await cache.setCache(cacheKey, mapped, 60); // 60 seconds TTL
+        return mapped;
     } catch (error) {
         console.error('[InventoryService] error:', error);
         throw error;
@@ -71,6 +79,7 @@ exports.updateEntity = async (variantId, ownerId, userId, data) => {
         // 5. Invalidate Dashboard Cache
         const cache = require('../../shared/services/cacheService');
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
 
         return updateRes.rows[0];
     } catch (error) {

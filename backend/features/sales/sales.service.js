@@ -84,6 +84,7 @@ exports.addSaleTransaction = async (date, customerId, uniqueItems, ownerId, reco
         
         await audit.logAction(recordedBy, logAction, 'sales', saleId);
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
 
         // Check for notifications — lazy require to avoid circular dependency
         const notifService = require('../notifications/notifications.service');
@@ -146,6 +147,7 @@ exports.deleteSaleTransaction = async (saleId, ownerId, deletedBy) => {
 
         await audit.logAction(deletedBy, 'SALE_DELETE', 'sales', saleId);
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
     } catch (error) {
         console.error('[SalesService] error:', error);
         throw error;
@@ -196,6 +198,7 @@ exports.deleteSaleItemTransaction = async (itemId, ownerId, userId, userRole) =>
         
         await audit.logAction(userId, 'SALE_ITEM_DELETE', 'sale_items', itemId);
         await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
     } catch (error) {
         if (client) await client.query('ROLLBACK');
         console.error('[SalesService] error:', error);

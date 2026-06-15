@@ -218,6 +218,17 @@ const useStore = create((set, get) => ({
     addStock: async (payload) => {
         try {
             const res = await api.post('/stock', payload);
+            
+            // Optimistic UI updates
+            set((state) => {
+                let newEntities = [...state.inventoryEntities];
+                const idx = newEntities.findIndex(e => e.inventoryId === payload.variant_id);
+                if (idx !== -1) {
+                    newEntities[idx].stock += parseInt(payload.quantity || 0);
+                }
+                return { inventoryEntities: newEntities };
+            });
+
             Promise.all([get().fetchStock(), get().fetchProducts(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
@@ -309,7 +320,33 @@ const useStore = create((set, get) => ({
     addSale: async (payload) => {
         try {
             const res = await api.post('/sales', payload);
-            Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]).catch(console.error);
+            
+            // Optimistic UI updates
+            set((state) => {
+                let newEntities = [...state.inventoryEntities];
+                let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
+                
+                if (payload.items) {
+                    let additionalRevenue = 0;
+                    payload.items.forEach(soldItem => {
+                        additionalRevenue += (soldItem.price_charged * soldItem.quantity);
+                        const idx = newEntities.findIndex(e => e.inventoryId === soldItem.inventoryId);
+                        if (idx !== -1) {
+                            newEntities[idx].stock = Math.max(0, newEntities[idx].stock - soldItem.quantity);
+                        }
+                    });
+                    
+                    if (newStats && newStats.totals) {
+                        newStats.totals.totalSalesRevenue += additionalRevenue;
+                        // Rough estimate for profit, full accuracy restored on next refresh
+                        newStats.totals.totalSalesProfit += additionalRevenue * 0.4; 
+                    }
+                }
+                return { inventoryEntities: newEntities, dashboardStats: newStats };
+            });
+
+            // Fetch in background to sync exact IDs and exact profit math from the DB
+            Promise.all([get().fetchSales(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
             throw new Error(getErrorMsg(error, 'Failed to add sale'));
@@ -318,7 +355,35 @@ const useStore = create((set, get) => ({
     deleteSale: async (id) => {
         try {
             const res = await api.delete(`/sales/${id}`);
-            Promise.all([get().fetchSales(), get().fetchStock(), get().fetchDashboardStats()]).catch(console.error);
+            
+            // Optimistic UI updates
+            set((state) => {
+                const deletedSale = state.sales.find(s => s.id === id);
+                let newEntities = [...state.inventoryEntities];
+                let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
+
+                if (deletedSale && deletedSale.items) {
+                    deletedSale.items.forEach(item => {
+                        const idx = newEntities.findIndex(e => e.inventoryId === item.inventoryId);
+                        if (idx !== -1) {
+                            newEntities[idx].stock += item.qty;
+                        }
+                    });
+                    
+                    if (newStats && newStats.totals) {
+                        newStats.totals.totalSalesRevenue -= deletedSale.total_amount;
+                        newStats.totals.totalSalesProfit -= deletedSale.total_profit;
+                    }
+                }
+                
+                return { 
+                    sales: state.sales.filter(s => s.id !== id),
+                    inventoryEntities: newEntities,
+                    dashboardStats: newStats
+                };
+            });
+
+            Promise.all([get().fetchSales(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
             const msg = error.response?.data?.message || 'Failed to delete sale';

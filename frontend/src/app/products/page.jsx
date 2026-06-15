@@ -12,10 +12,12 @@ export default function ProductsPage() {
     useEffect(() => {
         if (!loading && !user) {
             router.push('/login');
+        } else if (!loading && user && user.role === 'user') {
+            router.push('/user/sales');
         }
     }, [user, loading, router]);
 
-    if (loading || !user) {
+    if (loading || !user || user.role === 'user') {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-color)' }}>
                 <div className="spinner"></div>
