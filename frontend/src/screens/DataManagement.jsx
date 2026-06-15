@@ -221,7 +221,11 @@ export function DataManagement() {
                         <Database size={24} color="#f59e0b" /> Bulk CSV Import
                     </div>
                     <p style={{ color: 'var(--text-light)', fontSize: 14 }}>
-                        Import customers or products from a CSV file.
+                        Import customers or products from a CSV file.<br/>
+                        <span style={{ fontSize: 12, opacity: 0.8, display: 'block', marginTop: 5 }}>
+                            <b>Products:</b> Requires "Name" and "Price". Optional: "Volume Points", "Flavors".<br/>
+                            <b>Customers:</b> Requires "Name". Optional: "Phone", "ID".
+                        </span>
                     </p>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
