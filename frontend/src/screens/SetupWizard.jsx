@@ -194,8 +194,8 @@ export function SetupWizard({ onComplete }) {
                             </div>
                             
                             <div style={styles.footer}>
-                                <button type="button" onClick={() => setStep(1)} style={styles.btnSkip}>Skip for now</button>
-                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.7 : 1}}>Continue <ArrowRight size={18} /></button>
+                                <button type="button" disabled={loading} onClick={() => setStep(1)} style={{...styles.btnSkip, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Skip for now</button>
+                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Continue <ArrowRight size={18} /></button>
                             </div>
                         </form>
                     )}
@@ -218,8 +218,8 @@ export function SetupWizard({ onComplete }) {
                             </div>
                             
                             <div style={styles.footer}>
-                                <button type="button" onClick={completeSetup} style={styles.btnSkip} onMouseOver={(e) => e.target.style.color = '#64748b'} onMouseOut={(e) => e.target.style.color = '#94a3b8'}>Skip Wizard</button>
-                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.7 : 1}}>Next Step <ArrowRight size={18} /></button>
+                                <button type="button" disabled={loading} onClick={completeSetup} style={{...styles.btnSkip, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}} onMouseOver={(e) => !loading && (e.target.style.color = '#64748b')} onMouseOut={(e) => !loading && (e.target.style.color = '#94a3b8')}>Skip Wizard</button>
+                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Next Step <ArrowRight size={18} /></button>
                             </div>
                         </form>
                     )}
@@ -235,8 +235,8 @@ export function SetupWizard({ onComplete }) {
                             </div>
                             
                             <div style={styles.footer}>
-                                <button type="button" onClick={completeSetup} style={styles.btnSkip}>Skip</button>
-                                <button type="submit" disabled={loading} style={styles.btnNext}>Next Step <ArrowRight size={18} /></button>
+                                <button type="button" disabled={loading} onClick={completeSetup} style={{...styles.btnSkip, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Skip</button>
+                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Next Step <ArrowRight size={18} /></button>
                             </div>
                         </form>
                     )}
@@ -252,8 +252,8 @@ export function SetupWizard({ onComplete }) {
                             </div>
                             
                             <div style={styles.footer}>
-                                <button type="button" onClick={completeSetup} style={styles.btnSkip}>Skip</button>
-                                <button type="submit" disabled={loading} style={styles.btnNext}>Next Step <ArrowRight size={18} /></button>
+                                <button type="button" disabled={loading} onClick={completeSetup} style={{...styles.btnSkip, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Skip</button>
+                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Next Step <ArrowRight size={18} /></button>
                             </div>
                         </form>
                     )}
@@ -271,8 +271,8 @@ export function SetupWizard({ onComplete }) {
                             </div>
                             
                             <div style={styles.footer}>
-                                <button type="button" onClick={completeSetup} style={styles.btnSkip}>Finish Setup</button>
-                                <button type="submit" disabled={loading} style={styles.btnNext}>Complete Setup <CheckCircle size={18} /></button>
+                                <button type="button" disabled={loading} onClick={completeSetup} style={{...styles.btnSkip, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Finish Setup</button>
+                                <button type="submit" disabled={loading} style={{...styles.btnNext, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer'}}>Complete Setup <CheckCircle size={18} /></button>
                             </div>
                         </form>
                     )}
@@ -291,7 +291,7 @@ export function SetupWizard({ onComplete }) {
                                 <div style={{ fontSize: '14px', color: '#14532d' }}>Temporary Password: <strong style={{ fontFamily: 'monospace', fontSize: '16px', background: '#ffffff', padding: '2px 6px', borderRadius: '4px', border: '1px solid #bbf7d0' }}>{staffPass}</strong></div>
                             </div>
                             
-                            <button onClick={completeSetup} disabled={loading} style={{ ...styles.btnNext, width: '100%', justifyContent: 'center', padding: '14px' }}>Go to Dashboard</button>
+                            <button onClick={completeSetup} disabled={loading} style={{ ...styles.btnNext, width: '100%', justifyContent: 'center', padding: '14px', opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>Go to Dashboard</button>
                         </div>
                     )}
                 </div>
