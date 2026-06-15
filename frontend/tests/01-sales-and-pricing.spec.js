@@ -9,6 +9,8 @@ test.describe('Phase 1: Sales and Pricing Verification', () => {
   });
 
   test('DB Integrity: Sale variable pricing matches database strictly', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER CONSOLE:', msg.text()));
+    page.on('pageerror', error => console.log('BROWSER ERROR:', error));
     await page.click('text=Sales'); 
     await expect(page).toHaveURL(/.*sales.*/);
     

@@ -196,6 +196,24 @@ const useStore = create((set, get) => ({
     addProduct: async (payload) => {
         try {
             const res = await api.post('/products', payload);
+            
+            // Optimistic UI updates
+            set((state) => {
+                const tempId = res.data?.product_id || Date.now();
+                const newProduct = {
+                    id: tempId,
+                    version_id: tempId,
+                    name: payload.name,
+                    vendor_price: payload.vendor_price ? Number(payload.vendor_price) : Number(payload.vp || 0),
+                    vp: payload.volume_points ? Number(payload.volume_points) : 0,
+                    version_label: payload.version_label || '1',
+                    is_active: 1,
+                    flavours: payload.flavor ? payload.flavor.split(',').map(f => ({ id: Date.now(), name: f.trim(), is_active: 1 })) : [{ id: Date.now(), name: 'Standard', is_active: 1 }]
+                };
+                return { products: [...state.products, newProduct] };
+            });
+
+            // Fetch in background to sync exact IDs
             Promise.all([get().fetchProducts()]).catch(console.error);
             return extract(res);
         } catch (error) {
@@ -226,7 +244,14 @@ const useStore = create((set, get) => ({
                 if (idx !== -1) {
                     newEntities[idx].stock += parseInt(payload.quantity || 0);
                 }
-                return { inventoryEntities: newEntities };
+                
+                let newStock = [...state.stock];
+                const sIdx = newStock.findIndex(s => s.flavour_id === payload.variant_id);
+                if (sIdx !== -1) {
+                    newStock[sIdx].qty += parseInt(payload.quantity || 0);
+                }
+                
+                return { inventoryEntities: newEntities, stock: newStock };
             });
 
             Promise.all([get().fetchStock(), get().fetchProducts(), get().fetchDashboardStats()]).catch(console.error);
@@ -239,6 +264,20 @@ const useStore = create((set, get) => ({
     increaseStock: async (id, qty_add) => {
         try {
             const res = await api.put(`/stock/${id}/add`, { qty_add });
+            
+            // Optimistic update
+            set((state) => {
+                let newEntities = [...state.inventoryEntities];
+                const idx = newEntities.findIndex(e => e.inventoryId === id);
+                if (idx !== -1) newEntities[idx].stock += Number(qty_add);
+                
+                let newStock = [...state.stock];
+                const sIdx = newStock.findIndex(s => s.flavour_id === id || s.stock_id === id);
+                if (sIdx !== -1) newStock[sIdx].qty += Number(qty_add);
+                
+                return { inventoryEntities: newEntities, stock: newStock };
+            });
+
             Promise.all([get().fetchStock(), get().fetchDashboardStats()]).catch(console.error);
             return extract(res);
         } catch (error) {
@@ -250,9 +289,11 @@ const useStore = create((set, get) => ({
         try {
             const res = await api.patch(`/stock/${id}`, { quantity });
             // Update local state without full refresh for smooth UI
-            set((state) => ({
-                inventoryEntities: state.inventoryEntities.map(s => s.inventoryId === id ? { ...s, stock: quantity } : s)
-            }));
+            set((state) => {
+                let newEntities = state.inventoryEntities.map(s => s.inventoryId === id ? { ...s, stock: quantity } : s);
+                let newStock = state.stock.map(s => (s.flavour_id === id || s.stock_id === id) ? { ...s, qty: quantity } : s);
+                return { inventoryEntities: newEntities, stock: newStock };
+            });
             get().fetchDashboardStats().catch(console.error);
             return extract(res);
         } catch (error) {
