@@ -50,7 +50,9 @@ exports.toggleProductStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const newStatus = await service.toggleProductStatus(id);
-        res.json({ success: true, message: `Product ${newStatus ? 'enabled' : 'disabled'}` });
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${req.user.owner_id}`);
+        res.json({ is_active: newStatus });
     } catch (e) {
         if (e.message && e.message.includes('Unauthorized')) {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -80,6 +82,8 @@ exports.toggleVariant = async (req, res) => {
     try {
         const { id } = req.params;
         await service.toggleVariant(id);
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${req.user.owner_id}`);
         res.json({ success: true, message: "Variant toggled" });
     } catch (e) {
         if (e.message && e.message.includes('Unauthorized')) {
@@ -94,6 +98,8 @@ exports.deleteVariant = async (req, res) => {
     try {
         const { id } = req.params;
         await service.deleteVariant(id);
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${req.user.owner_id}`);
         res.json({ success: true, message: "Variant deleted" });
     } catch (e) {
         if (e.message && e.message.includes('Unauthorized')) {

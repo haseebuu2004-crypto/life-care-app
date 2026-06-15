@@ -105,6 +105,10 @@ exports.addProduct = async (ownerId, userId, data) => {
         await client.query('COMMIT');
         
         await audit.logAction(userId, 'PRODUCT_CREATE', 'products', productId);
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        
         return productId;
     } catch (error) {
         if (client) await client.query('ROLLBACK');
@@ -162,6 +166,9 @@ exports.updateProductPrice = async (productId, ownerId, userId, data) => {
         await client.query('COMMIT');
         
         await audit.logAction(userId, 'PRODUCT_PRICE_UPDATE', 'products', productId);
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
     } catch (error) {
         if (client) await client.query('ROLLBACK');
         console.error('[ProductsService] error:', error);
@@ -200,6 +207,8 @@ exports.addVariant = async (ownerId, data) => {
             versionId = verRes.rows[0].id;
         }
         await queries.addVariantDirect(versionId, ownerId, name);
+        const cache = require('../../shared/services/cacheService');
+        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
     } catch (error) {
         console.error('[ProductsService] error:', error);
         throw error;
