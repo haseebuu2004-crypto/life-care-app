@@ -11,7 +11,7 @@ async function authenticateToken(req, res, next) {
         req.user = user;
         
         // Force password change interceptor
-        if (user.force_password_change && req.path !== '/auth/change-password' && req.path !== '/auth/logout') {
+        if (user.force_password_change && !req.originalUrl.includes('/change-password') && !req.originalUrl.includes('/logout')) {
             return res.status(403).json({ 
                 success: false, 
                 forcePasswordChange: true, 
