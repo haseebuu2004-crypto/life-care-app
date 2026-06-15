@@ -1,4 +1,4 @@
-const fetch = require('node-fetch'); // or use native fetch if Node 18+
+const fetch = require('node-fetch');
 
 async function testEmailJS() {
     try {
@@ -9,7 +9,7 @@ async function testEmailJS() {
                 service_id: 'service_xw04039',
                 template_id: 'template_1a2mg5b',
                 user_id: 'nFU5O8zDzgJ_ZPhBi',
-                accessToken: 'el7jh12qgOELviLH6ViOQ',
+                accessToken: 'WRONG_KEY',
                 template_params: {
                     to_email: 'gcgroup207@gmail.com',
                     subject: 'Test Subject',
@@ -19,7 +19,7 @@ async function testEmailJS() {
         });
         
         const text = await res.text();
-        console.log('Status:', res.status);
+        console.log('Status with WRONG accessToken:', res.status);
         console.log('Response:', text);
     } catch (e) {
         console.error('Error:', e);
