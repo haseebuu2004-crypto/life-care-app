@@ -6,3 +6,5 @@ build
 *.db
 coverage
 .idea
+frontend/playwright-report/
+frontend/test-results/
