@@ -45,7 +45,7 @@ export function DataManagement() {
         }
     };
 
-    const [importType, setImportType] = useState('customers');
+    const [importType, setImportType] = useState('products');
     const [importFile, setImportFile] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
 
@@ -66,13 +66,9 @@ export function DataManagement() {
             }
             setImportFile(null);
             // Refresh database data
-            if (importType === 'customers') {
-                useStore.getState().fetchCustomers();
-            } else {
-                useStore.getState().fetchProducts();
-                useStore.getState().fetchStock();
-                useStore.getState().fetchInventoryEntities();
-            }
+            useStore.getState().fetchProducts();
+            useStore.getState().fetchStock();
+            useStore.getState().fetchInventoryEntities();
         } catch (error) {
             showToast(error.response?.data?.message || 'CSV Import failed', 'error');
         } finally {
@@ -220,22 +216,13 @@ export function DataManagement() {
                         <Database size={24} color="#f59e0b" /> Bulk CSV Import
                     </div>
                     <p style={{ color: 'var(--text-light)', fontSize: 14 }}>
-                        Import customers or products from a CSV file.<br/>
+                        Import products from a CSV file.<br/>
                         <span style={{ fontSize: 12, opacity: 0.8, display: 'block', marginTop: 5 }}>
-                            <b>Products:</b> Requires "Name" and "Price". Optional: "Volume Points", "Flavors".<br/>
-                            <b>Customers:</b> Requires "Name". Optional: "Phone", "ID".
+                            <b>Products:</b> Requires "Name" and "Price". Optional: "Volume Points", "Flavors".
                         </span>
                     </p>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <select 
-                            value={importType} 
-                            onChange={(e) => setImportType(e.target.value)}
-                            style={{ padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: '6px' }}
-                        >
-                            <option value="customers">Customers</option>
-                            <option value="products">Products</option>
-                        </select>
                         <input 
                             type="file" 
                             accept=".csv"
