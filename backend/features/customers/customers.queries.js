@@ -9,7 +9,20 @@ exports.getCustomers = (ownerId) => {
             JOIN sales s ON si.sale_id = s.id 
             WHERE s.customer_id = c.id AND s.is_deleted = false AND s.owner_id = $1),
            0
-         ) as total_sales_revenue
+         ) as total_sales_revenue,
+         COALESCE(
+           (SELECT SUM((si.price_charged::integer - si.vendor_price_snap::integer) * si.quantity::integer) 
+            FROM sale_items si 
+            JOIN sales s ON si.sale_id = s.id 
+            WHERE s.customer_id = c.id AND s.is_deleted = false AND s.owner_id = $1),
+           0
+         ) as total_sales_profit,
+         COALESCE(
+           (SELECT SUM(a.shake_amount::integer) 
+            FROM attendance a 
+            WHERE a.customer_id = c.id AND a.is_deleted = false AND a.owner_id = $1),
+           0
+         ) as total_shake_profit
          FROM customers c 
          WHERE c.owner_id = $1 
          ORDER BY c.name ASC`, 
@@ -41,7 +54,7 @@ exports.getCustomerSummary_Customer = (id, ownerId) => {
 
 exports.getCustomerSummary_Sales = (id, ownerId) => {
     return db.query(
-        `SELECT s.id, s.sale_date, si.quantity, si.price_charged, p.name as product_name
+        `SELECT s.id, s.sale_date, si.quantity, si.price_charged, si.vendor_price_snap, p.name as product_name
          FROM sales s 
          JOIN sale_items si ON s.id = si.sale_id
          JOIN product_versions pv ON si.product_version_id = pv.id

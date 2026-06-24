@@ -3,9 +3,11 @@ import { useState, useMemo, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { Plus, Trash2, X } from 'lucide-react';
 import { formatRupees } from '../utils/currency';
+import { usePermissions } from '../hooks/usePermissions';
 
 export function AddSaleModal({ onClose }) {
     const { inventoryEntities, fetchInventoryEntities, customers, fetchCustomers, addSale } = useStore();
+    const perm = usePermissions();
     
     const [customerInput, setCustomerInput] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -203,7 +205,7 @@ export function AddSaleModal({ onClose }) {
                                             placeholder="Sell Price"
                                             style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                                         />
-                                        {selectedEntity && (
+                                        {selectedEntity && perm.canViewProfit && (
                                             <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>
                                                 Vendor Price: {formatRupees(costPrice * 100)}
                                             </div>
@@ -211,13 +213,17 @@ export function AddSaleModal({ onClose }) {
                                     </div>
 
                                     <div>
-                                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 'bold', color: rowProfit > 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
-                                            {selectedEntity && item.sellingPrice !== '' ? formatRupees(rowProfit * 100) : '-'}
-                                        </div>
-                                        {selectedEntity && item.sellingPrice !== '' && rowProfit < 0 && (
-                                            <div style={{ fontSize: 11, color: 'var(--alert-color)', marginTop: 4, textAlign: 'right' }}>
-                                                Below cost
-                                            </div>
+                                        {perm.canViewProfit && (
+                                            <>
+                                                <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 'bold', color: rowProfit > 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
+                                                    {selectedEntity && item.sellingPrice !== '' ? formatRupees(rowProfit * 100) : '-'}
+                                                </div>
+                                                {selectedEntity && item.sellingPrice !== '' && rowProfit < 0 && (
+                                                    <div style={{ fontSize: 11, color: 'var(--alert-color)', marginTop: 4, textAlign: 'right' }}>
+                                                        Below cost
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     
@@ -242,10 +248,12 @@ export function AddSaleModal({ onClose }) {
                             <span style={{ fontWeight: 'bold' }}>Total Sales: </span>
                             <span style={{ fontSize: 18 }}>{formatRupees(calculations.total * 100)}</span>
                         </div>
-                        <div>
-                            <span style={{ fontWeight: 'bold' }}>Total Profit: </span>
-                            <span style={{ fontSize: 18, color: calculations.profit > 0 ? 'var(--primary-color)' : 'inherit' }}>{formatRupees(calculations.profit * 100)}</span>
-                        </div>
+                        {perm.canViewProfit && (
+                            <div>
+                                <span style={{ fontWeight: 'bold' }}>Total Profit: </span>
+                                <span style={{ fontSize: 18, color: calculations.profit > 0 ? 'var(--primary-color)' : 'inherit' }}>{formatRupees(calculations.profit * 100)}</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="modal-footer" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 15, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

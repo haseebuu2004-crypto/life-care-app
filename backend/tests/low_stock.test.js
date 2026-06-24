@@ -1,7 +1,7 @@
 require('dotenv').config();
 const db = require('../shared/db/connection');
 const dashboardService = require('../features/dashboard/dashboard.service');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const assert = require('assert');
 
 async function runTests() {
@@ -27,11 +27,11 @@ async function runTests() {
         versionId = verRes.rows[0].id;
         
         // Variant
-        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name) VALUES ($1, $2, $3, 'Standard') RETURNING id", [uuidv4(), ownerId, versionId]);
+        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name, low_stock_threshold, alert_enabled, is_active) VALUES ($1, $2, $3, 'Standard', 10, true, true) RETURNING id", [uuidv4(), ownerId, versionId]);
         variantId = varRes.rows[0].id;
         
         // Stock
-        await db.query("INSERT INTO stock (product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, 15, 100)", [versionId, variantId, ownerId]);
+        await db.query("INSERT INTO stock (id, product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, $4, 15, 100)", [uuidv4(), versionId, variantId, ownerId]);
 
         console.log("Running Test 1: all items above threshold -> counter = 0");
         let stats = await dashboardService.getStats(ownerId);
@@ -48,7 +48,7 @@ async function runTests() {
         console.log("Test 2 passed!");
 
         console.log("Running Test 3: threshold updated -> counter recalculates immediately");
-        await db.query("UPDATE admin_config SET low_stock_threshold = 5 WHERE owner_id = $1", [ownerId]);
+        await db.query("UPDATE variants SET low_stock_threshold = 5 WHERE owner_id = $1", [ownerId]);
         await require('../shared/services/cacheService').invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
         stats = await dashboardService.getStats(ownerId);
         assert.strictEqual(parseInt(stats.data.totals.lowStockCount), 0);
@@ -71,4 +71,6 @@ async function runTests() {
         await db.pool.end();
     }
 }
-runTests();
+test('low stock test', async () => {
+    await runTests();
+}, 30000);

@@ -67,6 +67,7 @@ export function Layout({ children }) {
                     ) : (
                         <>
                             {perm.isAdmin && <NavLink href="/" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><LayoutDashboard size={20}/> Dashboard</NavLink>}
+                            {perm.isAdmin && <NavLink href="/customers" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Users size={20}/> Customer Mgt.</NavLink>}
                             {perm.isAdmin && <NavLink href="/products" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Package size={20}/> Product Mgr</NavLink>}
                             <NavLink href="/stock" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><Package size={20}/> Stock</NavLink>
                             <NavLink href="/sales" className={({isActive}) => `nav-link ${isActive ? 'active':''}`} onClick={()=>setSidebarOpen(false)}><DollarSign size={20}/> Sales</NavLink>

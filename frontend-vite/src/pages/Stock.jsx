@@ -1,6 +1,6 @@
 import { useState, useMemo, memo, useEffect } from 'react';
 import useStore from '../store/useStore';
-import { Plus, Minus, Trash2, Package, AlertTriangle } from 'lucide-react';
+import { Plus, Minus, Trash2, Package, AlertTriangle, X } from 'lucide-react';
 import { AddStockModal } from '../components/AddStockModal';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -206,11 +206,24 @@ export function Stock() {
             <div className="flex justify-between items-center" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 15 }}>
                 <h2 style={{ margin: 0 }}>Stock Overview</h2>
                 <div className="flex gap-4" style={{ flex: 1, justifyContent: 'flex-end', minWidth: 300 }}>
-                    <input 
-                        placeholder="Search stock..." 
-                        value={search} onChange={e => setSearch(e.target.value)} 
-                        style={{ maxWidth: 300, flex: 1 }} 
-                    />
+                    <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+                        <input 
+                            placeholder="Search stock..." 
+                            value={search} 
+                            onChange={e => setSearch(e.target.value)} 
+                            style={{ width: '100%', paddingRight: search ? 30 : 14 }} 
+                        />
+                        {search && (
+                            <button 
+                                className="icon-btn" 
+                                onClick={() => setSearch('')} 
+                                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 4 }}
+                                title="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                     {canAddStock && (
                         <button className="btn btn-primary" onClick={() => setShowModal(true)}>
                             <Plus size={16} /> Add Stock
