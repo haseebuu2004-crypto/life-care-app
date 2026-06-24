@@ -2,7 +2,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import useStore from '../store/useStore';
 import { formatRupees } from '../utils/currency';
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { AddSaleModal } from '../components/AddSaleModal';
 import { useDebounce } from '../hooks/useDebounce';
 import { usePermissions } from '../hooks/usePermissions';
@@ -27,9 +27,11 @@ function SaleRow({ sale, onDelete }) {
                 <td style={{ padding: '12px 16px' }}><strong>{sale.customer}</strong></td>
                 <td style={{ padding: '12px 16px', color: 'var(--text-light)' }}>{sale.recorded_by}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold' }}>{formatRupees((sale.total_amount || 0) * 100)}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right', color: sale.total_profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
-                    {sale.total_profit >= 0 ? '+' : ''}{formatRupees((sale.total_profit || 0) * 100)}
-                </td>
+                {perm.canViewProfit && (
+                    <td style={{ padding: '12px 16px', textAlign: 'right', color: sale.total_profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
+                        {sale.total_profit >= 0 ? '+' : ''}{formatRupees((sale.total_profit || 0) * 100)}
+                    </td>
+                )}
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                     {(perm.canManageUsers || user?.email === sale.recorded_by) && (
                         <button className="btn icon-btn" style={{color:'var(--alert-color)'}} onClick={() => onDelete(sale.id)}>
@@ -40,7 +42,7 @@ function SaleRow({ sale, onDelete }) {
             </tr>
             {expanded && (
                 <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                    <td colSpan={7} style={{ padding: '10px 40px 20px 60px' }}>
+                    <td colSpan={perm.canViewProfit ? 7 : 6} style={{ padding: '10px 40px 20px 60px' }}>
                         <div style={{ background: '#fff', borderRadius: 8, padding: 15, border: '1px solid #e2e8f0' }}>
                             <table style={{ width: '100%', fontSize: 13 }}>
                                 <thead>
@@ -48,7 +50,7 @@ function SaleRow({ sale, onDelete }) {
                                         <th style={{ textAlign: 'left', paddingBottom: 10 }}>Product</th>
                                         <th style={{ textAlign: 'center', paddingBottom: 10 }}>Qty</th>
                                         <th style={{ textAlign: 'right', paddingBottom: 10 }}>Charged</th>
-                                        <th style={{ textAlign: 'right', paddingBottom: 10 }}>Profit</th>
+                                        {perm.canViewProfit && <th style={{ textAlign: 'right', paddingBottom: 10 }}>Profit</th>}
                                         {(perm.canManageUsers || user?.email === sale.recorded_by) && (
                                             <th style={{ textAlign: 'right', paddingBottom: 10 }}></th>
                                         )}
@@ -62,9 +64,11 @@ function SaleRow({ sale, onDelete }) {
                                             </td>
                                             <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>{item.qty}</td>
                                             <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 'bold' }}>{formatRupees((item.sale_price || 0) * 100)}</td>
-                                            <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'right', color: item.profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
-                                                {item.profit >= 0 ? '+' : ''}{formatRupees((item.profit || 0) * 100)}
-                                            </td>
+                                            {perm.canViewProfit && (
+                                                <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'right', color: item.profit >= 0 ? 'var(--primary-color)' : 'var(--alert-color)' }}>
+                                                    {item.profit >= 0 ? '+' : ''}{formatRupees((item.profit || 0) * 100)}
+                                                </td>
+                                            )}
                                             {(perm.canManageUsers || user?.email === sale.recorded_by) && (
                                                 <td style={{ padding: '8px 0', borderTop: '1px solid #f1f5f9', textAlign: 'right' }}>
                                                     <button className="btn icon-btn" style={{color:'var(--alert-color)', padding: 4}} onClick={() => onDelete(sale.id, item.item_id)}>
@@ -87,6 +91,7 @@ function SaleRow({ sale, onDelete }) {
 export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
     const { sales } = useStore();
     const { user } = useAuth();
+    const perm = usePermissions();
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(autoOpenAdd);
 
@@ -125,7 +130,24 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
             <div className="flex justify-between items-center" style={{marginBottom: 20}}>
                 <h2>Sales Records</h2>
                 <div className="flex gap-4">
-                    <input placeholder="Search customer..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth: 300}} />
+                    <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+                        <input 
+                            placeholder="Search customer..." 
+                            value={search} 
+                            onChange={e=>setSearch(e.target.value)} 
+                            style={{ width: '100%', paddingRight: search ? 30 : 14 }} 
+                        />
+                        {search && (
+                            <button 
+                                className="icon-btn" 
+                                onClick={() => setSearch('')} 
+                                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 4 }}
+                                title="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                     <button className="btn btn-primary" onClick={() => setShowModal(true)}>
                         <Plus size={16}/> Add Sale
                     </button>
@@ -141,7 +163,7 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Customer</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Recorded By</th>
                             <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total Amount</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total Profit</th>
+                            {perm.canViewProfit && <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total Profit</th>}
                             <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                         </tr>
                     </thead>
@@ -151,7 +173,7 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
                         ))}
                         {filteredSales.length === 0 && (
                             <tr>
-                                <td colSpan="7" style={{ padding: '20px' }}>
+                                <td colSpan={perm.canViewProfit ? 7 : 6} style={{ padding: '20px' }}>
                                     <EmptyState 
                                         icon={<ShoppingCart size={48} />}
                                         title={showOnlyMySales ? "You haven't recorded any sales yet." : "No Sales Found"} 

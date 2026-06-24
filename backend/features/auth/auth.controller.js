@@ -8,7 +8,8 @@ exports.login = async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
 
-        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+        const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+        const ip = rawIp.split(',')[0].trim();
         const ua = req.headers['user-agent'] || '';
 
         const { sessionId, user } = await authService.login(email, password, ip, ua);
@@ -48,14 +49,15 @@ exports.logout = async (req, res) => {
 
 exports.changePassword = async (req, res) => {
     try {
-        const { currentPassword, newPassword, oldPassword } = req.body;
+        const { currentPassword, newPassword, oldPassword, logoutOtherDevices } = req.body;
         const currPwd = currentPassword || oldPassword;
         const newPwd = newPassword;
 
         await authService.changePassword(req.user.id, currPwd, newPwd, req.user.force_password_change, req.cookies?.session_token);
         
-        if (req.user.force_password_change) {
-            const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+        if (logoutOtherDevices) {
+            const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+            const ip = rawIp.split(',')[0].trim();
             const ua = req.headers['user-agent'] || '';
             const sessionId = await authService.createNewSession(req.user.id, ip, ua);
             res.cookie('session_token', sessionId, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 8 * 3600000 });

@@ -2,7 +2,7 @@ require('dotenv').config();
 const db = require('../shared/db/connection');
 const dashboardService = require('../features/dashboard/dashboard.service');
 const cacheService = require('../shared/services/cacheService');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const assert = require('assert');
 
 async function runTests() {
@@ -24,11 +24,11 @@ async function runTests() {
         const verRes = await db.query("INSERT INTO product_versions (id, product_id, is_active, version_label, vendor_price) VALUES ($1, $2, true, '1', 100) RETURNING id", [uuidv4(), productId]);
         versionId = verRes.rows[0].id;
         
-        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name) VALUES ($1, $2, $3, 'Standard') RETURNING id", [uuidv4(), ownerId, versionId]);
+        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name, low_stock_threshold, alert_enabled, is_active) VALUES ($1, $2, $3, 'Standard', 10, true, true) RETURNING id", [uuidv4(), ownerId, versionId]);
         variantId = varRes.rows[0].id;
         
         // Stock 10 * 100 = 1000
-        await db.query("INSERT INTO stock (product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, 10, 50)", [versionId, variantId, ownerId]);
+        await db.query("INSERT INTO stock (id, product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, $4, 10, 50)", [uuidv4(), versionId, variantId, ownerId]);
 
         await cacheService.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
 
@@ -82,4 +82,6 @@ async function runTests() {
         await db.pool.end();
     }
 }
-runTests();
+test('dashboard filter kpi test', async () => {
+    await runTests();
+}, 30000);

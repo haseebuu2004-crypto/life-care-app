@@ -2,7 +2,7 @@ require('dotenv').config();
 const db = require('../shared/db/connection');
 const dashboardService = require('../features/dashboard/dashboard.service');
 const cacheService = require('../shared/services/cacheService');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const assert = require('assert');
 
 async function runTests() {
@@ -26,7 +26,7 @@ async function runTests() {
         versionId = verRes.rows[0].id;
         
         // Variant
-        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name) VALUES ($1, $2, $3, 'Standard') RETURNING id", [uuidv4(), ownerId, versionId]);
+        const varRes = await db.query("INSERT INTO variants (id, owner_id, product_version_id, name, low_stock_threshold, alert_enabled, is_active) VALUES ($1, $2, $3, 'Standard', 10, true, true) RETURNING id", [uuidv4(), ownerId, versionId]);
         variantId = varRes.rows[0].id;
         
         // Stock: we intentionally set vendor_price_snap to NULL to simulate the bug (or maybe it is just the bug of using snap instead of pv.vendor_price)
@@ -41,7 +41,7 @@ async function runTests() {
         // Does stock table have `owner_id` properly set? Yes, s.owner_id = $1.
         
         // Let's insert a stock with vendor_price_snap = 0 just to see if the dashboard KPI is 0, while the stock module uses pv.vendor_price = 100?
-        await db.query("INSERT INTO stock (product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, 10, 50)", [versionId, variantId, ownerId]);
+        await db.query("INSERT INTO stock (id, product_version_id, variant_id, owner_id, quantity, vendor_price_snap) VALUES ($1, $2, $3, $4, 10, 50)", [uuidv4(), versionId, variantId, ownerId]);
 
         await cacheService.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
         let stats = await dashboardService.getStats(ownerId);
@@ -64,4 +64,6 @@ async function runTests() {
         await db.pool.end();
     }
 }
-runTests();
+test('dashboard stock kpi test', async () => {
+    await runTests();
+}, 30000);

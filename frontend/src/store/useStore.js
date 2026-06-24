@@ -113,6 +113,15 @@ const useStore = create((set, get) => ({
             set({ customers: extract(c) || [] });
         } catch (error) { console.error(error); }
     },
+    fetchCustomerSummary: async (id) => {
+        try {
+            const res = await api.get(`/customers/${id}/summary`);
+            return res.data?.data;
+        } catch (error) {
+            get().showToast("Failed to fetch customer summary", "error");
+            return null;
+        }
+    },
     fetchDashboardStats: async (start = '', end = '') => {
         try {
             const params = new URLSearchParams();

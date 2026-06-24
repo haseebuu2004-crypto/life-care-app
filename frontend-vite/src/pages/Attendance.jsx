@@ -3,7 +3,7 @@ import useStore from '../store/useStore';
 import { usePermissions } from '../hooks/usePermissions';
 import { Check, X, Trash2, Calendar } from 'lucide-react';
 
-const AttendanceRecord = memo(({ record, canDelete, onDelete }) => (
+const AttendanceRecord = memo(({ record, canDelete, onDelete, canViewProfit }) => (
     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
         <td style={{ padding: '12px 16px' }}><strong>{record.name}</strong></td>
         <td style={{ padding: '12px 16px' }}>
@@ -18,9 +18,11 @@ const AttendanceRecord = memo(({ record, canDelete, onDelete }) => (
                 {record.status}
             </span>
         </td>
-        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-            {record.status === 'Present' ? `₹${record.shake_profit || 0}` : '—'}
-        </td>
+        {canViewProfit && (
+            <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                {record.status === 'Present' ? `₹${record.shake_profit || 0}` : '—'}
+            </td>
+        )}
         {canDelete && (
             <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                 <button className="btn icon-btn" onClick={() => onDelete(record)} style={{ color: 'var(--alert-color)' }}>
@@ -81,7 +83,7 @@ export function Attendance() {
             // Handle both full ISO strings from DB and raw YYYY-MM-DD
             const recordDate = a.date.split('T')[0];
             return recordDate === date;
-        });
+        }).reverse();
     }, [attendance, date]);
 
     const uniqueCustomers = useMemo(() => {
@@ -153,11 +155,13 @@ export function Attendance() {
                     </button>
                 </div>
 
-                <div style={{ marginTop: 15, fontSize: 12, color: 'var(--text-light)', background: '#f8fafc', padding: '10px 15px', borderRadius: 8 }}>
-                    <span>
-                        Marking present logs the attendance and records profit automatically.
-                    </span>
-                </div>
+                {perm.canViewProfit && (
+                    <div style={{ marginTop: 15, fontSize: 12, color: 'var(--text-light)', background: '#f8fafc', padding: '10px 15px', borderRadius: 8 }}>
+                        <span>
+                            Marking present logs the attendance and records profit automatically.
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="card-grid" style={{ padding: 0, marginBottom: 20 }}>
@@ -169,10 +173,12 @@ export function Attendance() {
                     <div className="card-title">Total Absent</div>
                     <div className="card-value" style={{ fontSize: 24, color: 'var(--alert-color)' }}>{summary.absent}</div>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
-                    <div className="card-title">Total Profit</div>
-                    <div className="card-value" style={{ fontSize: 24, color: '#8b5cf6' }}>₹{summary.profit}</div>
-                </div>
+                {perm.canViewProfit && (
+                    <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                        <div className="card-title">Total Profit</div>
+                        <div className="card-value" style={{ fontSize: 24, color: '#8b5cf6' }}>₹{summary.profit}</div>
+                    </div>
+                )}
             </div>
 
             <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -181,7 +187,7 @@ export function Attendance() {
                         <tr>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Customer Name</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Status</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Profit</th>
+                            {perm.canViewProfit && <th style={{ padding: '12px 16px', textAlign: 'right' }}>Profit</th>}
                             {perm.canDeleteAttendance && <th style={{ padding: '12px 16px', textAlign: 'right', width: 80 }}>Actions</th>}
                         </tr>
                     </thead>
@@ -191,12 +197,13 @@ export function Attendance() {
                                 key={a.id} 
                                 record={a} 
                                 canDelete={perm.canDeleteAttendance} 
+                                canViewProfit={perm.canViewProfit}
                                 onDelete={handleDelete} 
                             />
                         ))}
                         {activeRecords.length === 0 && (
                             <tr>
-                                <td colSpan={perm.canDeleteAttendance ? "4" : "3"} style={{ textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
+                                <td colSpan={(perm.canDeleteAttendance ? 1 : 0) + (perm.canViewProfit ? 1 : 0) + 2} style={{ textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
                                     <Calendar size={40} style={{ opacity: 0.2, margin: '0 auto 10px' }} />
                                     <p>No records for {new Date(date).toLocaleDateString()}</p>
                                 </td>

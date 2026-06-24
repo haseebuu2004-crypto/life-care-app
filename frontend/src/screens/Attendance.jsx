@@ -7,7 +7,7 @@ import { Check, X, Trash2, Calendar, Users } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { formatRupees } from '../utils/currency';
 
-const AttendanceRecord = memo(({ record, canDelete, onDelete }) => (
+const AttendanceRecord = memo(({ record, canDelete, onDelete, canViewProfit }) => (
     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
         <td style={{ padding: '12px 16px' }}><strong>{record.name}</strong></td>
         <td style={{ padding: '12px 16px' }}>
@@ -22,9 +22,11 @@ const AttendanceRecord = memo(({ record, canDelete, onDelete }) => (
                 {record.status === 'default' ? 'Present' : 'Custom'}
             </span>
         </td>
-        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-            {record.shakeProfit ? formatRupees(record.shakeProfit * 100) : '—'}
-        </td>
+        {canViewProfit && (
+            <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                {record.shakeProfit !== undefined && record.shakeProfit !== null ? formatRupees(record.shakeProfit * 100) : '—'}
+            </td>
+        )}
         <td style={{ padding: '12px 16px', color: 'var(--text-light)', textAlign: 'right' }}>
             {record.recorded_by}
         </td>
@@ -104,7 +106,7 @@ export function Attendance({ showOnlyMyAttendance = false }) {
             if (showOnlyMyAttendance && a.recorded_by !== user?.email) return false;
             return true;
         });
-    }, [attendance, date, showOnlyMyAttendance, user]);
+    }, [attendance, date, showOnlyMyAttendance, user]).reverse();
 
     const summary = useMemo(() => {
         let present = 0;
@@ -141,10 +143,12 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                     <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Total Attendees</p>
                     <p style={{ fontSize: 24, fontWeight: 'bold' }}>{activeRecords.length}</p>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid var(--accent-color)' }}>
-                    <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Total Shake Profit</p>
-                    <p style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--accent-color)' }}>{formatRupees(summary.profit * 100)}</p>
-                </div>
+                {perm.canViewProfit && (
+                    <div className="card" style={{ borderLeft: '4px solid var(--accent-color)' }}>
+                        <p style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Total Shake Profit</p>
+                        <p style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--accent-color)' }}>{formatRupees(summary.profit * 100)}</p>
+                    </div>
+                )}
             </div>
 
             <div className="card" style={{ marginBottom: 30 }}>
@@ -186,7 +190,7 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                         <tr>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Customer</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left' }}>Status</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right' }}>Profit Generated</th>
+                            {perm.canViewProfit && <th style={{ padding: '12px 16px', textAlign: 'right' }}>Profit Generated</th>}
                             <th style={{ padding: '12px 16px', textAlign: 'right' }}>Recorded By</th>
                             <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -198,11 +202,12 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                                 record={a} 
                                 onDelete={handleDelete}
                                 canDelete={perm.canManageUsers || a.recorded_by === user?.email}
+                                canViewProfit={perm.canViewProfit}
                             />
                         ))}
                         {activeRecords.length === 0 && (
                             <tr>
-                                <td colSpan="5" style={{ padding: '20px' }}>
+                                <td colSpan={(perm.canViewProfit ? 1 : 0) + 4} style={{ padding: '20px' }}>
                                     <EmptyState 
                                         icon={<Users size={48} />}
                                         title="No Attendance Recorded" 

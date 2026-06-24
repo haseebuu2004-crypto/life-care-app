@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import useStore from '../store/useStore';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { AddSaleModal } from '../components/AddSaleModal';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -45,7 +45,24 @@ export function Sales() {
             <div className="flex justify-between items-center" style={{marginBottom: 20}}>
                 <h2>Sales Records</h2>
                 <div className="flex gap-4">
-                    <input placeholder="Search records..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth: 300}} />
+                    <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+                        <input 
+                            placeholder="Search records..." 
+                            value={search} 
+                            onChange={e=>setSearch(e.target.value)} 
+                            style={{ width: '100%', paddingRight: search ? 30 : 14 }} 
+                        />
+                        {search && (
+                            <button 
+                                className="icon-btn" 
+                                onClick={() => setSearch('')} 
+                                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 4 }}
+                                title="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                     <button className="btn btn-primary" onClick={() => setShowModal(true)}>
                         <Plus size={16}/> Add Sale
                     </button>

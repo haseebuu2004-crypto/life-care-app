@@ -57,7 +57,7 @@ export function UserLayout({ children }) {
     };
 
     return (
-        <div className="app-container" style={{ paddingBottom: '65px' }}>
+        <div className="app-container">
             <main className="main-content">
                 <header className="topbar" style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderBottom: '1px solid var(--border-color)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -79,7 +79,7 @@ export function UserLayout({ children }) {
                     </div>
                 </header>
 
-                <div style={{ padding: '16px', flex: 1 }}>{children}</div>
+                <div style={{ padding: '16px', paddingBottom: '85px', flex: 1 }}>{children}</div>
             </main>
 
             {/* Notifications Slide-out Panel */}

@@ -72,12 +72,15 @@ exports.getCustomerSummary = async (id, ownerId) => {
         ]);
 
         let totalSpent = 0;
+        let totalSalesProfit = 0;
         let totalShakeProfit = 0;
         
         ((salesRes && salesRes.rows) || []).forEach(r => {
             const price = Number(r.price_charged) || 0;
+            const vendorPrice = Number(r.vendor_price_snap) || 0;
             const qty = Number(r.quantity) || 0;
             totalSpent += price * qty;
+            totalSalesProfit += (price - vendorPrice) * qty;
         });
         ((attRes && attRes.rows) || []).forEach(r => {
             totalShakeProfit += Number(r.shake_amount) || 0;
@@ -88,6 +91,7 @@ exports.getCustomerSummary = async (id, ownerId) => {
             sales: (salesRes && salesRes.rows) ? salesRes.rows : [], 
             attendance: (attRes && attRes.rows) ? attRes.rows : [],
             totalSpent: totalSpent / 100,
+            totalSalesProfit: totalSalesProfit / 100,
             totalShakeProfit: totalShakeProfit / 100
         };
     } catch (error) {

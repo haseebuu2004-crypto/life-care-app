@@ -183,7 +183,7 @@ export function Settings({ userOnly = false }) {
                     <>
                         <button className={`btn ${activeTab === 'config' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('config')}><Database size={16}/> App Config</button>
                         <button className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('users')}><Users size={16}/> Users</button>
-                        <button className={`btn ${activeTab === 'system' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setActiveTab('system')}><Database size={16}/> Danger Zone</button>
+                        <button className={`btn ${activeTab === 'system' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setActiveTab('system')}><Database size={16}/> Erase Data</button>
                     </>
                 )}
                 <button className={`btn ${activeTab === 'account' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('account')}><Key size={16}/> Account</button>
@@ -210,7 +210,7 @@ export function Settings({ userOnly = false }) {
                 
                 {activeTab === 'system' && perm.isAdmin && (
                     <div style={{ padding: 20 }}>
-                        <h3 style={{ color: 'var(--alert-color)', marginBottom: 10 }}>Danger Zone</h3>
+                        <h3 style={{ color: 'var(--alert-color)', marginBottom: 10 }}>Erase Data</h3>
                         <p style={{ marginBottom: 20 }}>This action cannot be undone. It will wipe all business data (Sales, Stock, Attendance).</p>
                         
                         {resetStep === 0 && (

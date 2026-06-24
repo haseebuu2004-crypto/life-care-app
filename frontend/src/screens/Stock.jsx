@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, memo, useEffect } from 'react';
 import useStore from '../store/useStore';
-import { Package, Plus, Trash2, Minus } from 'lucide-react';
+import { Plus, Minus, Trash2, Package, AlertTriangle, X } from 'lucide-react';
 import { AddStockModal } from '../components/AddStockModal';
 import { useDebounce } from '../hooks/useDebounce';
 import { usePermissions } from '../hooks/usePermissions';
@@ -15,7 +15,10 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
         setTempQty(item.stock);
     }, [item.stock]);
     
-    const handleQtyChange = (e) => setTempQty(e.target.value);
+    const handleQtyChange = (e) => {
+        const val = e.target.value.replace(/[^0-9-]/g, '');
+        setTempQty(val);
+    };
     
     const saveQty = () => {
         const q = parseInt(tempQty);
@@ -24,6 +27,8 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
                 useStore.getState().showToast(err.message, 'error');
                 setTempQty(item.stock); // revert on error
             });
+        } else {
+            setTempQty(item.stock);
         }
     };
     
@@ -69,7 +74,7 @@ const StockRow = memo(({ item, isAdmin, canEditStockQty, updateStockQuantity, de
                         <button className="btn icon-btn" onClick={decrement} disabled={parseInt(tempQty) <= 0} style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}>
                             <Minus size={14} />
                         </button>
-                        <input type="number" value={tempQty} onChange={handleQtyChange} onBlur={handleBlur} onKeyDown={handleKeyDown} style={{ width: 60, padding: '6px', textAlign: 'center', fontWeight: isLowStock ? 'bold' : 'normal', color: isLowStock ? 'var(--alert-color)' : 'inherit', margin: 0, borderRadius: '4px', border: '1px solid var(--border-color)' }} />
+                        <input type="text" inputMode="numeric" value={tempQty} onChange={handleQtyChange} onBlur={handleBlur} onKeyDown={handleKeyDown} style={{ width: 60, padding: '6px', textAlign: 'center', fontWeight: isLowStock ? 'bold' : 'normal', color: isLowStock ? 'var(--alert-color)' : 'inherit', margin: 0, borderRadius: '4px', border: '1px solid var(--border-color)' }} />
                         <button className="btn icon-btn" onClick={increment} style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white' }}>
                             <Plus size={14} />
                         </button>
@@ -152,7 +157,24 @@ export function Stock({ readOnly = false }) {
             <div className="flex justify-between items-center" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 15 }}>
                 <h2 style={{ margin: 0 }}>Stock Overview</h2>
                 <div className="flex gap-4" style={{ flex: 1, justifyContent: 'flex-end', minWidth: 300 }}>
-                    <input placeholder="Search stock..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 300, flex: 1 }} />
+                    <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+                        <input 
+                            placeholder="Search stock..." 
+                            value={search} 
+                            onChange={e => setSearch(e.target.value)} 
+                            style={{ width: '100%', paddingRight: search ? 30 : 14 }} 
+                        />
+                        {search && (
+                            <button 
+                                className="icon-btn" 
+                                onClick={() => setSearch('')} 
+                                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 4 }}
+                                title="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
                     {canAddStock && (
                         <button className="btn btn-primary" onClick={() => setShowModal(true)}>
                             <Plus size={16} /> Add Stock
