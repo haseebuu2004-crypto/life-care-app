@@ -3,10 +3,23 @@ import axios from 'axios';
 
 const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
-    withCredentials: true // Extremely important for stateful cookie sessions
+    withCredentials: true // Still needed if we ever fallback to cookies
 });
 
+api.interceptors.request.use((config) => {
+    if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('session_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    return config;
+}, (error) => Promise.reject(error));
+
 api.interceptors.response.use(response => {
+    if (typeof window !== 'undefined' && response.data?.session_token) {
+        localStorage.setItem('session_token', response.data.session_token);
+    }
     return response;
 }, error => {
     if (typeof window !== 'undefined') {

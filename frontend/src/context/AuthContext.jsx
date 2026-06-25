@@ -42,6 +42,10 @@ export function AuthProvider({ children }) {
             
             // Note: Tokens are no longer stored in localStorage (HttpOnly cookies now)
             // But we keep user details for UI rendering
+            // Update: We ARE using localStorage for Bearer tokens now to fix cross-domain third-party cookie blocking!
+            if (data.session_token) {
+                localStorage.setItem('session_token', data.session_token);
+            }
             const loggedInUser = { id: data.user.id, email: data.user.email, username: data.user.username, role: data.user.role, force_password_change: data.user.force_password_change };
             setUser(loggedInUser);
             useStore.setState({ user: loggedInUser });
@@ -55,6 +59,7 @@ export function AuthProvider({ children }) {
 
     const logout = async () => {
         try { await api.post('/auth/logout'); } catch (_) {}
+        localStorage.removeItem('session_token');
         setUser(null);
         useStore.getState().resetStore();
         useStore.setState({ user: null });

@@ -14,17 +14,12 @@ exports.login = async (req, res) => {
 
         const { sessionId, user } = await authService.login(email, password, ip, ua);
 
-        const isProd = process.env.NODE_ENV === 'production';
-        res.cookie('session_token', sessionId, {
-            httpOnly: true,
-            secure: isProd, // Required for SameSite=None, but breaks JMeter on localhost HTTP
-            sameSite: isProd ? 'none' : 'lax', // Required for cross-domain in prod
-            maxAge: 8 * 3600000
-        });
+        // res.cookie logic removed in favor of Bearer tokens
 
         res.json({ 
             success: true,
             role: user.role,
+            session_token: sessionId,
             user: { id: user.id, email: user.email, role: user.role, forcePasswordChange: user.force_password_change } 
         });
     } catch (error) {
@@ -39,9 +34,9 @@ exports.login = async (req, res) => {
 
 exports.logout = async (req, res) => {
     try {
-        const sessionId = req.cookies?.session_token;
+        const sessionId = req.headers.authorization?.split(' ')[1] || req.cookies?.session_token;
         await authService.logout(sessionId, req.user?.id);
-        res.clearCookie('session_token');
+        res.clearCookie('session_token'); // Clear legacy cookie if it exists
         res.json({ success: true, message: "Logged out" });
     } catch (error) {
         res.status(500).json({ success: false, message: "Logout error" });
@@ -54,17 +49,18 @@ exports.changePassword = async (req, res) => {
         const currPwd = currentPassword || oldPassword;
         const newPwd = newPassword;
 
-        await authService.changePassword(req.user.id, currPwd, newPwd, req.user.force_password_change, req.cookies?.session_token);
+        const currentSessionId = req.headers.authorization?.split(' ')[1] || req.cookies?.session_token;
+        await authService.changePassword(req.user.id, currPwd, newPwd, req.user.force_password_change, currentSessionId);
         
+        let newSessionToken = null;
         if (logoutOtherDevices) {
             const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
             const ip = rawIp.split(',')[0].trim();
             const ua = req.headers['user-agent'] || '';
-            const sessionId = await authService.createNewSession(req.user.id, ip, ua);
-            res.cookie('session_token', sessionId, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 8 * 3600000 });
+            newSessionToken = await authService.createNewSession(req.user.id, ip, ua);
         }
 
-        res.json({ success: true, message: "Password updated successfully" });
+        res.json({ success: true, message: "Password updated successfully", session_token: newSessionToken });
     } catch (error) {
         if (error.message.includes("least 8 characters") || error.message.includes("required") || error.message.includes("Incorrect") || error.message.includes("Invalid")) {
             return res.status(400).json({ success: false, message: error.message });
