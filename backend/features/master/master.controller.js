@@ -8,6 +8,7 @@ exports.getAppStats = async (req, res) => {
         const stats = await masterService.getAppStats();
         res.json({ success: true, stats });
     } catch (error) {
+        console.error("master.controller.getAppStats ERROR:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
 };
@@ -35,6 +36,7 @@ exports.getMasterAdmins = async (req, res) => {
         const data = await masterService.getMasterAdmins();
         res.json({ success: true, data });
     } catch (error) {
+        console.error("master.controller.getMasterAdmins ERROR:", error);
         res.status(500).json({ success: false, message: "Server error" });
     }
 };

@@ -1,7 +1,8 @@
 const authService = require('../../features/auth/auth.service');
 
 async function authenticateToken(req, res, next) {
-    const sessionId = req.cookies?.session_token;
+    const authHeader = req.headers.authorization;
+    const sessionId = (authHeader && authHeader.split(' ')[1]) || req.cookies?.session_token;
 
     if (!sessionId) return res.status(401).json({ success: false, message: "Access denied: Missing token" });
 
