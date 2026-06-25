@@ -14,10 +14,11 @@ exports.login = async (req, res) => {
 
         const { sessionId, user } = await authService.login(email, password, ip, ua);
 
+        const isProd = process.env.NODE_ENV === 'production';
         res.cookie('session_token', sessionId, {
             httpOnly: true,
-            secure: true, // Required for SameSite=None
-            sameSite: 'none', // Required for cross-domain cookies (Vercel to Render)
+            secure: isProd, // Required for SameSite=None, but breaks JMeter on localhost HTTP
+            sameSite: isProd ? 'none' : 'lax', // Required for cross-domain in prod
             maxAge: 8 * 3600000
         });
 

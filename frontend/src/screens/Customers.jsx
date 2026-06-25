@@ -5,21 +5,33 @@ import { formatRupees } from '../utils/currency';
 import { Search, ChevronDown, ChevronRight, Users, X, Calendar, DollarSign } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 
+import api from '../services/api';
+
 function CustomerDetails({ customerId, onClose }) {
-    const { fetchCustomerSummary } = useStore();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
+    const showToast = useStore(state => state.showToast);
 
     useEffect(() => {
         let mounted = true;
-        fetchCustomerSummary(customerId).then(res => {
-            if (mounted) {
-                setSummary(res);
-                setLoading(false);
-            }
-        });
+        setLoading(true);
+        api.get(`/customers/${customerId}/summary`)
+            .then(res => {
+                if (mounted) {
+                    setSummary(res.data?.data || null);
+                    setLoading(false);
+                }
+            })
+            .catch(err => {
+                console.error("Customer details error:", err);
+                if (mounted) {
+                    setSummary(null);
+                    setLoading(false);
+                    showToast("Failed to fetch details", "error");
+                }
+            });
         return () => { mounted = false; };
-    }, [customerId, fetchCustomerSummary]);
+    }, [customerId, showToast]);
 
     if (loading) return <div style={{ padding: 20, textAlign: 'center' }}>Loading details...</div>;
     if (!summary) return <div style={{ padding: 20, textAlign: 'center', color: 'var(--alert-color)' }}>Failed to load details.</div>;
@@ -102,7 +114,6 @@ function CustomerDetails({ customerId, onClose }) {
                                 <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
                                     <tr>
                                         <th style={{ padding: '8px 12px', textAlign: 'left' }}>Date</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>Type</th>
                                         <th style={{ padding: '8px 12px', textAlign: 'right' }}>Profit</th>
                                     </tr>
                                 </thead>
@@ -110,15 +121,6 @@ function CustomerDetails({ customerId, onClose }) {
                                     {attendance.slice(0, 50).map((a, i) => (
                                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                             <td style={{ padding: '8px 12px' }}>{new Date(a.attendance_date).toLocaleDateString()}</td>
-                                            <td style={{ padding: '8px 12px' }}>
-                                                <span style={{ 
-                                                    padding: '2px 8px', borderRadius: 12, fontSize: 11, 
-                                                    background: a.type === 'custom' ? '#e0e7ff' : '#dcfce7',
-                                                    color: a.type === 'custom' ? '#4f46e5' : '#16a34a'
-                                                }}>
-                                                    {a.type === 'custom' ? 'Custom' : 'Present'}
-                                                </span>
-                                            </td>
                                             <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--accent-color)', fontWeight: 'bold' }}>
                                                 {a.shake_amount !== null ? formatRupees(Number(a.shake_amount)) : '—'}
                                             </td>
@@ -181,11 +183,16 @@ function CustomerRow({ customer }) {
 export function Customers() {
     const { customers } = useStore();
     const [search, setSearch] = useState('');
+    const [displayLimit, setDisplayLimit] = useState(50);
 
     const filteredCustomers = useMemo(() => {
         if (!Array.isArray(customers)) return [];
         return customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
     }, [customers, search]);
+
+    const visibleCustomers = useMemo(() => {
+        return filteredCustomers.slice(0, displayLimit);
+    }, [filteredCustomers, displayLimit]);
 
     return (
         <div>
@@ -230,9 +237,18 @@ export function Customers() {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredCustomers.map(c => (
+                        {visibleCustomers.map(c => (
                             <CustomerRow key={c.id} customer={c} />
                         ))}
+                        {filteredCustomers.length > displayLimit && (
+                            <tr>
+                                <td colSpan="7" style={{ padding: '20px', textAlign: 'center' }}>
+                                    <button className="btn btn-outline" onClick={() => setDisplayLimit(d => d + 50)}>
+                                        Load More
+                                    </button>
+                                </td>
+                            </tr>
+                        )}
                         {filteredCustomers.length === 0 && (
                             <tr>
                                 <td colSpan="7" style={{ padding: '20px' }}>

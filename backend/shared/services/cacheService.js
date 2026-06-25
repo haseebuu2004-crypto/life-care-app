@@ -2,6 +2,7 @@ const { Redis } = require('@upstash/redis');
 
 let redisClient = null;
 const memoryCache = new Map();
+const activePromises = new Map();
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
     redisClient = new Redis({
@@ -65,4 +66,23 @@ exports.invalidateCachePattern = async (pattern) => {
             }
         }
     }
+};
+
+exports.getOrSetCache = async (key, fetchFunction, ttlSeconds = 300) => {
+    const cached = await exports.getCache(key);
+    if (cached !== null && cached !== undefined) return cached;
+
+    if (activePromises.has(key)) return await activePromises.get(key);
+
+    const promise = fetchFunction().then(async (val) => {
+        if (val !== null && val !== undefined) await exports.setCache(key, val, ttlSeconds);
+        activePromises.delete(key);
+        return val;
+    }).catch(err => {
+        activePromises.delete(key);
+        throw err;
+    });
+
+    activePromises.set(key, promise);
+    return await promise;
 };

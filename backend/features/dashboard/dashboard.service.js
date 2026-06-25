@@ -29,9 +29,78 @@ exports.getStats = async (ownerId, startDate, endDate) => {
         const periodCacheKey = `dashboard_stats:${ownerId}:${startDate}:${endDate}:period`;
         const pitCacheKey = `dashboard_stats:${ownerId}:PIT`;
 
-    let [cachedPeriod, cachedPit] = await Promise.all([
-        cache.getCache(periodCacheKey),
-        cache.getCache(pitCacheKey)
+    const [cachedPeriod, cachedPit] = await Promise.all([
+        cache.getOrSetCache(periodCacheKey, async () => {
+            const periodScalarQuery = queries.getDashboardPeriodScalars(ownerId, startDate, endDate);
+            const monthlySalesQuery = queries.getMonthlyProductSales(ownerId, startDate, endDate);
+            const topCustomersQuery = queries.getTopCustomers(ownerId, startDate, endDate);
+            const shakeProfitQuery = queries.getShakeProfitDetails(ownerId, startDate, endDate);
+
+            let periodScalarRes = { rows: [] }, res5 = { rows: [] }, res6 = { rows: [] }, res7 = { rows: [] };
+            try {
+                periodScalarRes = await db.query(periodScalarQuery.text, periodScalarQuery.values);
+                res5 = await db.query(monthlySalesQuery.text, monthlySalesQuery.values);
+                res6 = await db.query(topCustomersQuery.text, topCustomersQuery.values);
+                res7 = await db.query(shakeProfitQuery.text, shakeProfitQuery.values);
+            } catch(e) {
+                console.error("Stats Generation: SQL error during period queries.", e.message);
+            }
+
+            const monthlyProductSales = res5.rows || [];
+            return {
+                totalSalesProfit: (periodScalarRes.rows[0]?.totalSalesProfit || 0) / 100,
+                totalSalesRevenue: (periodScalarRes.rows[0]?.totalSalesRevenue || 0) / 100,
+                totalShakeProfit: (periodScalarRes.rows[0]?.totalShakeProfit || 0) / 100,
+                monthlyProductSales: monthlyProductSales,
+                topSeller: monthlyProductSales.length > 0 ? monthlyProductSales[0].name : 'N/A',
+                topCustomers: (res6.rows || []).map(r => ({ name: r.name, profit: r.profit / 100 })),
+                shakeProfitDetails: (res7.rows || []).map(r => ({
+                    name: r.name,
+                    attendance: r.attendance,
+                    profitPerDay: r.profitPerDay / 100,
+                    totalProfit: r.totalProfit / 100
+                }))
+            };
+        }, 300),
+
+        cache.getOrSetCache(pitCacheKey, async () => {
+            let confRes = { rows: [] };
+            let lowStockThresh = 10;
+            try {
+                const confQuery = queries.getAdminConfig(ownerId);
+                confRes = await db.query(confQuery.text, confQuery.values);
+                lowStockThresh = confRes.rows[0]?.low_stock_threshold;
+                
+                if (lowStockThresh === undefined || lowStockThresh === null) {
+                    const sysRes = await db.query("SELECT value FROM settings WHERE key = 'SYSTEM_LOW_STOCK_THRESHOLD'");
+                    lowStockThresh = sysRes.rows.length > 0 ? parseInt(sysRes.rows[0].value) : 10;
+                }
+            } catch(e) {
+                console.error("Stats Generation: Error fetching config. Using defaults.", e.message);
+            }
+
+            const pitScalarQuery = queries.getDashboardPitScalars(ownerId);
+            const lowStockQuery = queries.getLowStockItems(ownerId);
+
+            let pitScalarRes = { rows: [] }, res4 = { rows: [] };
+            try {
+                pitScalarRes = await db.query(pitScalarQuery.text, pitScalarQuery.values);
+                res4 = await db.query(lowStockQuery.text, lowStockQuery.values);
+            } catch(e) {
+                console.error("Stats Generation: SQL error during PIT queries.", e.message);
+            }
+
+            return {
+                setupCompleted: confRes.rows[0]?.setup_completed || false,
+                adminConfig: {
+                    default_shake_amount: parseInt(confRes.rows[0]?.default_shake_amount || 0) / 100,
+                    low_stock_threshold: parseInt(lowStockThresh)
+                },
+                totalStockVpValue: (pitScalarRes.rows[0]?.totalStockVpValue || 0) / 100,
+                lowStockCount: parseInt(pitScalarRes.rows[0]?.lowStock || 0),
+                lowStockItems: (res4.rows || []).map(r => ({ name: r.product_name, qty: parseInt(r.qty) }))
+            };
+        }, 300)
     ]);
 
     const stats = {
@@ -50,84 +119,6 @@ exports.getStats = async (ownerId, startDate, endDate) => {
         shakeProfitDetails: [],
         adminConfig: {}
     };
-
-    if (!cachedPit) {
-        let confRes = { rows: [] };
-        let lowStockThresh = 10;
-        try {
-            const confQuery = queries.getAdminConfig(ownerId);
-            confRes = await db.query(confQuery.text, confQuery.values);
-            lowStockThresh = confRes.rows[0]?.low_stock_threshold;
-            
-            if (lowStockThresh === undefined || lowStockThresh === null) {
-                const sysRes = await db.query("SELECT value FROM settings WHERE key = 'SYSTEM_LOW_STOCK_THRESHOLD'");
-                lowStockThresh = sysRes.rows.length > 0 ? parseInt(sysRes.rows[0].value) : 10;
-            }
-        } catch(e) {
-            console.error("Stats Generation: Error fetching config. Using defaults.", e.message);
-        }
-
-        const pitScalarQuery = queries.getDashboardPitScalars(ownerId);
-        const lowStockQuery = queries.getLowStockItems(ownerId);
-
-        let pitScalarRes = { rows: [] }, res4 = { rows: [] };
-        try {
-            pitScalarRes = await db.query(pitScalarQuery.text, pitScalarQuery.values);
-            res4 = await db.query(lowStockQuery.text, lowStockQuery.values);
-            
-            if (!pitScalarRes.rows[0]) console.warn("Stats Generation: Null aggregations returned for PIT scalars.");
-        } catch(e) {
-            console.error("Stats Generation: SQL error during PIT queries.", e.message);
-        }
-
-        cachedPit = {
-            setupCompleted: confRes.rows[0]?.setup_completed || false,
-            adminConfig: {
-                default_shake_amount: parseInt(confRes.rows[0]?.default_shake_amount || 0) / 100,
-                low_stock_threshold: parseInt(lowStockThresh)
-            },
-            totalStockVpValue: (pitScalarRes.rows[0]?.totalStockVpValue || 0) / 100,
-            lowStockCount: parseInt(pitScalarRes.rows[0]?.lowStock || 0),
-            lowStockItems: (res4.rows || []).map(r => ({ name: r.product_name, qty: parseInt(r.qty) }))
-        };
-        await cache.setCache(pitCacheKey, cachedPit, 300); // 5 minutes TTL
-    }
-
-    if (!cachedPeriod) {
-        const periodScalarQuery = queries.getDashboardPeriodScalars(ownerId, startDate, endDate);
-        const monthlySalesQuery = queries.getMonthlyProductSales(ownerId, startDate, endDate);
-        const topCustomersQuery = queries.getTopCustomers(ownerId, startDate, endDate);
-        const shakeProfitQuery = queries.getShakeProfitDetails(ownerId, startDate, endDate);
-
-        let periodScalarRes = { rows: [] }, res5 = { rows: [] }, res6 = { rows: [] }, res7 = { rows: [] };
-        try {
-            periodScalarRes = await db.query(periodScalarQuery.text, periodScalarQuery.values);
-            res5 = await db.query(monthlySalesQuery.text, monthlySalesQuery.values);
-            res6 = await db.query(topCustomersQuery.text, topCustomersQuery.values);
-            res7 = await db.query(shakeProfitQuery.text, shakeProfitQuery.values);
-            
-            if (!periodScalarRes.rows[0]) console.warn("Stats Generation: Null aggregations returned for period scalars.");
-        } catch(e) {
-            console.error("Stats Generation: SQL error during period queries.", e.message);
-        }
-
-        const monthlyProductSales = res5.rows || [];
-        cachedPeriod = {
-            totalSalesProfit: (periodScalarRes.rows[0]?.totalSalesProfit || 0) / 100,
-            totalSalesRevenue: (periodScalarRes.rows[0]?.totalSalesRevenue || 0) / 100,
-            totalShakeProfit: (periodScalarRes.rows[0]?.totalShakeProfit || 0) / 100,
-            monthlyProductSales: monthlyProductSales,
-            topSeller: monthlyProductSales.length > 0 ? monthlyProductSales[0].name : 'N/A',
-            topCustomers: (res6.rows || []).map(r => ({ name: r.name, profit: r.profit / 100 })),
-            shakeProfitDetails: (res7.rows || []).map(r => ({
-                name: r.name,
-                attendance: r.attendance,
-                profitPerDay: r.profitPerDay / 100,
-                totalProfit: r.totalProfit / 100
-            }))
-        };
-        await cache.setCache(periodCacheKey, cachedPeriod, 300); // 5 minutes TTL
-    }
 
     stats.setupCompleted = cachedPit.setupCompleted;
     stats.adminConfig = cachedPit.adminConfig;

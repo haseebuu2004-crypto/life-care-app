@@ -3,9 +3,10 @@ import { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
-import { Check, X, Trash2, Calendar, Users } from 'lucide-react';
+import { Check, Trash2, Calendar, Users } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { formatRupees } from '../utils/currency';
+import { CustomerAutocomplete } from '../components/CustomerAutocomplete';
 
 const AttendanceRecord = memo(({ record, canDelete, onDelete, canViewProfit }) => (
     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -16,10 +17,10 @@ const AttendanceRecord = memo(({ record, canDelete, onDelete, canViewProfit }) =
                 padding: '2px 10px',
                 borderRadius: 20,
                 fontSize: 13, fontWeight: 600,
-                background: record.status === 'default' ? '#f0fdf4' : '#fef2f2',
-                color: record.status === 'default' ? '#15803d' : '#b91c1c'
+                background: '#f0fdf4',
+                color: '#15803d'
             }}>
-                {record.status === 'default' ? 'Present' : 'Custom'}
+                Present
             </span>
         </td>
         {canViewProfit && (
@@ -50,6 +51,7 @@ export function Attendance({ showOnlyMyAttendance = false }) {
     const [customerInput, setCustomerInput] = useState('');
     const [shakeProfit, setShakeProfit] = useState('');
     const [loading, setLoading] = useState(false);
+    const [displayLimit, setDisplayLimit] = useState(50);
 
     useEffect(() => {
         fetchCustomers();
@@ -64,17 +66,12 @@ export function Attendance({ showOnlyMyAttendance = false }) {
         
         try {
             setLoading(true);
-            const existing = activeCustomers.find(c => c.name.toLowerCase() === customerInput.trim().toLowerCase());
             const payload = { 
                 date, 
-                type: status === 'Present' ? 'default' : 'custom',
-                shakeProfit: shakeProfit !== '' ? Number(shakeProfit) : undefined
+                type: 'default',
+                shakeProfit: shakeProfit !== '' ? Number(shakeProfit) : undefined,
+                customerName: customerInput.trim()
             };
-            if (existing) {
-                payload.customerId = existing.id;
-            } else {
-                payload.customerName = customerInput.trim();
-            }
 
             await addAttendance(payload);
             useStore.getState().showToast("Attendance logged", "success");
@@ -110,18 +107,17 @@ export function Attendance({ showOnlyMyAttendance = false }) {
 
     const summary = useMemo(() => {
         let present = 0;
-        let custom = 0;
         let profit = 0;
         activeRecords.forEach(a => {
-            if (a.status === 'default') {
-                present++;
-            } else {
-                custom++;
-            }
+            present++;
             profit += (a.shakeProfit || 0);
         });
-        return { present, custom, profit };
+        return { present, profit };
     }, [activeRecords]);
+
+    const visibleRecords = useMemo(() => {
+        return activeRecords.slice(0, displayLimit);
+    }, [activeRecords, displayLimit]);
 
     return (
         <div style={{ maxWidth: 1000, margin: '0 auto' }}>
@@ -156,18 +152,11 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                 <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                     <div style={{ flex: 2, minWidth: 200 }}>
                         <label style={{ display: 'block', fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Customer Name</label>
-                        <input 
-                            list="attendance-customer-list"
-                            value={customerInput} 
-                            onChange={e=>setCustomerInput(e.target.value)}
-                            placeholder="Select or type new customer"
-                            style={{ width: '100%', padding: '10px 15px', border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--card-bg)', outline: 'none' }}
+                        <CustomerAutocomplete 
+                            customers={activeCustomers}
+                            value={customerInput}
+                            onChange={setCustomerInput}
                         />
-                        <datalist id="attendance-customer-list">
-                            {activeCustomers.map(c => (
-                                <option key={c.id} value={c.name} />
-                            ))}
-                        </datalist>
                     </div>
                     <div style={{ flex: 1, minWidth: 150 }}>
                         <label style={{ display: 'block', fontSize: 13, color: 'var(--text-light)', marginBottom: 5 }}>Profit Override (Rs.)</label>
@@ -176,9 +165,6 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                     <div style={{ display: 'flex', gap: 10 }}>
                         <button disabled={loading} className="btn" style={{ background: '#16a34a', color: 'white', border: 'none', minWidth: 120, display: 'flex', justifyContent: 'center' }} onClick={() => onSubmit('Present')}>
                             <Check size={18} /> Mark Present
-                        </button>
-                        <button disabled={loading} className="btn" style={{ background: 'var(--alert-color)', color: 'white', border: 'none', minWidth: 120, display: 'flex', justifyContent: 'center' }} onClick={() => onSubmit('Absent')}>
-                            <X size={18} /> Mark Custom
                         </button>
                     </div>
                 </div>
@@ -196,7 +182,7 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {activeRecords.map(a => (
+                        {visibleRecords.map(a => (
                             <AttendanceRecord 
                                 key={a.id} 
                                 record={a} 
@@ -205,6 +191,15 @@ export function Attendance({ showOnlyMyAttendance = false }) {
                                 canViewProfit={perm.canViewProfit}
                             />
                         ))}
+                        {activeRecords.length > displayLimit && (
+                            <tr>
+                                <td colSpan={(perm.canViewProfit ? 1 : 0) + 4} style={{ padding: '20px', textAlign: 'center' }}>
+                                    <button className="btn btn-outline" onClick={() => setDisplayLimit(d => d + 50)}>
+                                        Load More
+                                    </button>
+                                </td>
+                            </tr>
+                        )}
                         {activeRecords.length === 0 && (
                             <tr>
                                 <td colSpan={(perm.canViewProfit ? 1 : 0) + 4} style={{ padding: '20px' }}>

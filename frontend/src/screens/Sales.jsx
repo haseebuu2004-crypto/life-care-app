@@ -94,6 +94,7 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
     const perm = usePermissions();
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(autoOpenAdd);
+    const [displayLimit, setDisplayLimit] = useState(50);
 
     const debouncedSearch = useDebounce(search, 300);
 
@@ -124,6 +125,10 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
             return customer.includes(q);
         });
     }, [sales, debouncedSearch, showOnlyMySales, user]);
+
+    const visibleSales = useMemo(() => {
+        return filteredSales.slice(0, displayLimit);
+    }, [filteredSales, displayLimit]);
 
     return (
         <div>
@@ -168,9 +173,18 @@ export function Sales({ showOnlyMySales = false, autoOpenAdd = false }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredSales.map(s => (
+                        {visibleSales.map(s => (
                             <SaleRow key={s.id} sale={s} onDelete={handleDelete} />
                         ))}
+                        {filteredSales.length > displayLimit && (
+                            <tr>
+                                <td colSpan={perm.canViewProfit ? 7 : 6} style={{ padding: '20px', textAlign: 'center' }}>
+                                    <button className="btn btn-outline" onClick={() => setDisplayLimit(d => d + 50)}>
+                                        Load More
+                                    </button>
+                                </td>
+                            </tr>
+                        )}
                         {filteredSales.length === 0 && (
                             <tr>
                                 <td colSpan={perm.canViewProfit ? 7 : 6} style={{ padding: '20px' }}>
