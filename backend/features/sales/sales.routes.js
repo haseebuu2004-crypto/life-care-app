@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const salesController = require('./sales.controller');
-const { authenticateToken } = require('../../shared/middleware/auth');
+const { authenticateToken } = require('../../shared/middleware/authMiddleware');
 const validate = require('../../shared/middleware/validate');
 const { addSaleSchema } = require('./sales.validation');
 
