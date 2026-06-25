@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const customerController = require('./customers.controller');
 const customerValidation = require('./customers.validation');
-const { authenticateToken } = require('../../shared/middleware/auth');
+const { authenticateToken } = require('../../shared/middleware/authMiddleware');
 const { requireAdmin } = require('../../shared/middleware/authMiddleware');
 
 router.get('/', authenticateToken, customerController.getCustomers);
