@@ -42,8 +42,8 @@ app.use(cors({
             return callback(null, true);
         }
         
-        // Allow all Vercel preview and production URLs automatically
-        if (origin.endsWith('.vercel.app')) {
+        // Allow common deployment subdomains automatically
+        if (origin.endsWith('.vercel.app') || origin.endsWith('.netlify.app') || origin.endsWith('.onrender.com') || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
             return callback(null, true);
         }
         
