@@ -78,7 +78,9 @@ exports.getCustomerSummary = async (req, res) => {
         const { id } = req.params;
         if (!id) return res.status(400).json({ success: false, message: "Customer ID is required." });
         
+        console.log(`[DEBUG] getCustomerSummary called for id: ${id}, owner: ${ownerId}`);
         const summary = await customerService.getCustomerSummary(id, ownerId);
+        console.log(`[DEBUG] getCustomerSummary finished for id: ${id}`);
         
         if (!summary) {
             return res.status(404).json({ success: false, message: "Customer not found." });

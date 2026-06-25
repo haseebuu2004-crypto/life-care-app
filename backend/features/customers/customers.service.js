@@ -105,7 +105,11 @@ exports.findOrCreateCustomer = async (ownerId, customerName, userId) => {
     try {
         const existing = await queries.findCustomerByName(ownerId, customerName);
         if (existing && existing.rows && existing.rows.length > 0) {
-            return existing.rows[0].id;
+            const existingCust = existing.rows[0];
+            if (existingCust.name !== customerName.trim()) {
+                await queries.updateCustomerNameOnly(existingCust.id, ownerId, customerName.trim());
+            }
+            return existingCust.id;
         } else {
             const newCust = await queries.insertCustomerMinimal(ownerId, customerName);
             if (!newCust || !newCust.rows) throw new Error("Failed to create customer record.");

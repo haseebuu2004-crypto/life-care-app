@@ -76,7 +76,11 @@ exports.getCustomerSummary_Attendance = (id, ownerId) => {
 };
 
 exports.findCustomerByName = (ownerId, customerName) => {
-    return db.query(`SELECT id FROM customers WHERE owner_id = $1 AND name ILIKE $2`, [ownerId, customerName.trim()]);
+    return db.query(`SELECT id, name FROM customers WHERE owner_id = $1 AND name ILIKE $2`, [ownerId, customerName.trim()]);
+};
+
+exports.updateCustomerNameOnly = (id, ownerId, name) => {
+    return db.query(`UPDATE customers SET name = $1 WHERE id = $2 AND owner_id = $3`, [name.trim(), id, ownerId]);
 };
 
 exports.insertCustomerMinimal = (ownerId, customerName) => {

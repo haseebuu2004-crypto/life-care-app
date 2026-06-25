@@ -4,6 +4,7 @@ import useStore from '../store/useStore';
 import { Plus, Trash2, X } from 'lucide-react';
 import { formatRupees } from '../utils/currency';
 import { usePermissions } from '../hooks/usePermissions';
+import { CustomerAutocomplete } from './CustomerAutocomplete';
 
 export function AddSaleModal({ onClose }) {
     const { inventoryEntities, fetchInventoryEntities, customers, fetchCustomers, addSale } = useStore();
@@ -92,16 +93,11 @@ export function AddSaleModal({ onClose }) {
                 };
             });
 
-            const existing = activeCustomers.find(c => c.name.toLowerCase() === customerInput.trim().toLowerCase());
             const payload = {
                 sale_date: date,
-                items: itemsPayload
+                items: itemsPayload,
+                customer_name: customerInput.trim()
             };
-            if (existing) {
-                payload.customer_id = existing.id;
-            } else {
-                payload.customer_name = customerInput.trim();
-            }
 
             await addSale(payload);
             useStore.getState().showToast("Sale completed successfully", "success");
@@ -125,19 +121,11 @@ export function AddSaleModal({ onClose }) {
                     <div style={{ display: 'flex', gap: 20 }}>
                         <div className="form-group" style={{ flex: 1 }}>
                             <label>Customer Name</label>
-                            <input 
-                                list="customer-list"
+                            <CustomerAutocomplete 
+                                customers={activeCustomers}
                                 value={customerInput}
-                                onChange={e => setCustomerInput(e.target.value)}
-                                placeholder="Select or type new customer"
-                                required
-                                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }}
+                                onChange={setCustomerInput}
                             />
-                            <datalist id="customer-list">
-                                {activeCustomers.map(c => (
-                                    <option key={c.id} value={c.name} />
-                                ))}
-                            </datalist>
                             {activeCustomers.length === 0 && (
                                 <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 4 }}>
                                     Type a name to add a new customer on the fly.
