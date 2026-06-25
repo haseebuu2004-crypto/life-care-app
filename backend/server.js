@@ -12,6 +12,7 @@ const cronService = require('./shared/services/cronService');
 const helmet = require('helmet');
 
 const app = express();
+app.set('trust proxy', 1); // Required for express-rate-limit behind Render reverse proxy
 const PORT = process.env.PORT || 3000;
 
 // Security headers
@@ -57,6 +58,12 @@ app.use(cors({
 app.use(compression());
 app.use(cookieParser());
 app.use(express.json());
+
+// Log all incoming requests
+app.use((req, res, next) => {
+    console.log(`[INCOMING] ${req.method} ${req.url}`);
+    next();
+});
 
 // API Routes
 app.use('/api', apiRoutes);
