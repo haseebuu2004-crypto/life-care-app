@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from "@/utils/routerShim";
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { Shield, Users, Activity, Eye, EyeOff, ChevronDown, ChevronRight, Key, Trash2, LogOut, CheckCircle, AlertTriangle } from 'lucide-react';
+import { formatDate, formatDateTime } from '../utils/dateFormatter';
 
 export function MasterDashboard() {
     const { user, logout } = useAuth();
@@ -278,8 +279,8 @@ export function MasterDashboard() {
                                                                 )}
                                                             </td>
                                                             <td style={styles.td}><span style={styles.badge('#60a5fa', 'rgba(59, 130, 246, 0.1)')}>{u.role}</span></td>
-                                                            <td style={styles.td}>{new Date(u.created_at).toLocaleDateString()}</td>
-                                                            <td style={styles.td}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'Never'}</td>
+                                                            <td style={styles.td}>{formatDate(u.created_at)}</td>
+                                                            <td style={styles.td}>{u.last_login_at ? formatDate(u.last_login_at) : 'Never'}</td>
                                                             <td style={{ ...styles.td, textAlign: 'center' }}>
                                                                 {u.is_active ? <span style={{ color: '#4ade80', fontWeight: 'bold' }}><CheckCircle size={14}/> Active</span> : <span style={{ color: '#f87171', fontWeight: 'bold' }}><EyeOff size={14}/> Inactive</span>}
                                                             </td>
@@ -298,8 +299,8 @@ export function MasterDashboard() {
                                                                 <td style={{ ...styles.td, paddingLeft: '40px', color: '#cbd5e1' }}>↳ {subUser.email}</td>
                                                                 <td style={styles.td}></td>
                                                                 <td style={styles.td}><span style={styles.badge('#94a3b8', '#334155')}>{subUser.role}</span></td>
-                                                                <td style={{ ...styles.td, color: '#94a3b8' }}>{new Date(subUser.created_at).toLocaleDateString()}</td>
-                                                                <td style={{ ...styles.td, color: '#94a3b8' }}>{subUser.last_login_at ? new Date(subUser.last_login_at).toLocaleDateString() : 'Never'}</td>
+                                                                <td style={{ ...styles.td, color: '#94a3b8' }}>{formatDate(subUser.created_at)}</td>
+                                                                <td style={{ ...styles.td, color: '#94a3b8' }}>{subUser.last_login_at ? formatDate(subUser.last_login_at) : 'Never'}</td>
                                                                 <td style={{ ...styles.td, textAlign: 'center' }}>
                                                                     {subUser.is_active ? <span style={{ color: '#4ade80' }}>Active</span> : <span style={{ color: '#f87171' }}>Inactive</span>}
                                                                 </td>
@@ -368,7 +369,7 @@ export function MasterDashboard() {
                                                             {session.status === 'Idle' && <span style={{ color: '#94a3b8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}><div style={{ width: '10px', height: '10px', backgroundColor: '#94a3b8', borderRadius: '50%' }}></div> Idle</span>}
                                                             {session.status === 'Ended' && <span style={{ color: '#64748b' }}>Ended</span>}
                                                         </td>
-                                                        <td style={{ ...styles.td, color: '#cbd5e1' }}>{new Date(session.lastActivity || session.loginTime).toLocaleString()}</td>
+                                                        <td style={{ ...styles.td, color: '#cbd5e1' }}>{formatDateTime(session.lastActivity || session.loginTime)}</td>
                                                         <td style={styles.td}>
                                                             <div style={{ color: '#f1f5f9' }}>{session.device || 'Unknown Device'}</div>
                                                             <div style={{ color: '#64748b', fontSize: '12px' }}>{session.ipAddress}</div>
@@ -409,7 +410,7 @@ export function MasterDashboard() {
                                                 const isCritical = ['SYSTEM_RESET', 'BACKUP_RESTORE', 'DATA_BULK_DELETE'].includes(log.action);
                                                 return (
                                                     <tr key={log.id} style={{ backgroundColor: isCritical ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
-                                                        <td style={{ ...styles.td, color: isCritical ? '#fca5a5' : '#cbd5e1' }}>{new Date(log.created_at).toLocaleString()}</td>
+                                                        <td style={{ ...styles.td, color: isCritical ? '#fca5a5' : '#cbd5e1' }}>{formatDateTime(log.created_at)}</td>
                                                         <td style={styles.td}>
                                                             <div style={{ color: isCritical ? '#f87171' : '#f1f5f9', fontWeight: isCritical ? 'bold' : 'normal' }}>{log.actor_email}</div>
                                                             <div style={{ color: '#64748b', fontSize: '12px' }}>{log.actor_role}</div>

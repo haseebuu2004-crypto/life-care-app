@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { usePermissions } from '../hooks/usePermissions';
 import { Database, AlertTriangle, Calendar as CalendarIcon, RotateCcw, ShoppingCart, ClipboardCheck } from 'lucide-react';
+import { formatDate, formatDateTime } from '../utils/dateFormatter';
 import { Navigate } from "@/utils/routerShim";
 import EmptyState from '../components/EmptyState';
 
@@ -299,10 +300,10 @@ export function DataManagement() {
                                     <div>
                                         <div style={{ fontWeight: 'bold' }}>{record.type}: {record.customerName}</div>
                                         <div style={{ fontSize: 12, color: 'var(--text-light)' }}>
-                                            Amount/Profit: Rs {record.value} • Recorded: {new Date(record.date).toLocaleDateString()}
+                                            Amount/Profit: Rs {record.value} • Recorded: {formatDate(record.date)}
                                         </div>
                                         <div style={{ fontSize: 12, color: '#ef4444', marginTop: 3 }}>
-                                            Deleted: {new Date(record.deletedAt).toLocaleString()}
+                                            Deleted: {formatDateTime(record.deletedAt)}
                                         </div>
                                     </div>
                                 </div>

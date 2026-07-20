@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from '../utils/routerShim';
 import { DollarSign, Calendar, Package, Settings, LogOut, Bell, X } from 'lucide-react';
+import { formatDateTime } from '../utils/dateFormatter';
 import useStore from '../store/useStore';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -108,7 +109,7 @@ export function UserLayout({ children }) {
                                 <div key={n.id} onClick={() => handleNotifClick(n.id)} style={{ padding: 16, borderBottom: '1px solid var(--border-color)', borderLeft: n.read_at ? 'none' : '4px solid var(--primary-color)', cursor: 'pointer', background: n.read_at ? 'transparent' : 'var(--bg-color)' }}>
                                     <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{n.title}</div>
                                     <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 8 }}>{n.body}</div>
-                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>{new Date(n.created_at).toLocaleString()}</div>
+                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>{formatDateTime(n.created_at)}</div>
                                 </div>
                             ))
                         )}

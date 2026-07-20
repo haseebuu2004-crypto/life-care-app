@@ -2,13 +2,13 @@
 import { useState, useMemo, useCallback } from 'react';
 import useStore from '../store/useStore';
 import { formatRupees } from '../utils/currency';
-import { Plus, Trash2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, X, ShoppingCart } from 'lucide-react';
+import { formatDate } from '../utils/dateFormatter';
 import { AddSaleModal } from '../components/AddSaleModal';
 import { useDebounce } from '../hooks/useDebounce';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import EmptyState from '../components/EmptyState';
-import { ShoppingCart } from 'lucide-react';
 
 function SaleRow({ sale, onDelete }) {
     const [expanded, setExpanded] = useState(false);
@@ -23,7 +23,7 @@ function SaleRow({ sale, onDelete }) {
                         {expanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
                     </button>
                 </td>
-                <td style={{ padding: '12px 16px' }}>{sale.date ? new Date(sale.date).toLocaleDateString() : 'N/A'}</td>
+                <td style={{ padding: '12px 16px' }}>{sale.date ? formatDate(sale.date) : 'N/A'}</td>
                 <td style={{ padding: '12px 16px' }}><strong>{sale.customer}</strong></td>
                 <td style={{ padding: '12px 16px', color: 'var(--text-light)' }}>{sale.recorded_by}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold' }}>{formatRupees((sale.total_amount || 0) * 100)}</td>

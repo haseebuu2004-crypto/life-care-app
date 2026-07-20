@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import useStore from '../store/useStore';
 import { Bell, Check, Trash2 } from 'lucide-react';
+import { formatDateTime } from '../utils/dateFormatter';
 import EmptyState from '../components/EmptyState';
 
 export function Notifications() {
@@ -76,7 +77,7 @@ export function Notifications() {
                             <div className="flex justify-between" style={{ marginBottom: 8 }}>
                                 <strong style={{ color: n.read_at ? 'var(--text-color)' : '#1e3a8a' }}>{n.title}</strong>
                                 <span style={{ fontSize: 12, color: 'var(--text-light)' }}>
-                                    {new Date(n.created_at).toLocaleString()}
+                                    {formatDateTime(n.created_at)}
                                 </span>
                             </div>
                             <p style={{ color: 'var(--text-color)', margin: 0, fontSize: 14, lineHeight: 1.5 }}>

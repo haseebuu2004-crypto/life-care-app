@@ -4,11 +4,7 @@ import { Navigate } from "@/utils/routerShim";
 import useStore from '../store/useStore';
 import { usePermissions } from '../hooks/usePermissions';
 import { RefreshCw, Monitor, Smartphone } from 'lucide-react';
-
-function formatDate(dt) {
-    if (!dt) return '—';
-    return new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+import { formatDateTime } from '../utils/dateFormatter';
 
 export function LoginActivity() {
     const perm = usePermissions();
@@ -108,7 +104,7 @@ export function LoginActivity() {
                                             }
                                         </td>
                                         <td style={{ color: 'var(--text-light)', fontSize: 13 }}>{h.userAgent?.split(' ')[0] || 'Unknown'}</td>
-                                        <td style={{ fontSize: 13 }}>{formatDate(h.loginTime)}</td>
+                                        <td style={{ fontSize: 13 }}>{formatDateTime(h.loginTime)}</td>
                                         <td>
                                             {h.status === 'Online'
                                                 ? <span style={{ color: '#15803d', fontWeight: 600, fontSize: 12 }}>● Online</span>

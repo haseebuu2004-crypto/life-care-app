@@ -5,6 +5,9 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { formatRupees } from '../utils/currency';
 import { usePermissions } from '../hooks/usePermissions';
 import { CustomerAutocomplete } from './CustomerAutocomplete';
+import Select from 'react-select';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 export function AddSaleModal({ onClose }) {
     const { inventoryEntities, fetchInventoryEntities, customers, fetchCustomers, addSale } = useStore();
@@ -110,14 +113,56 @@ export function AddSaleModal({ onClose }) {
         }
     };
 
+    const selectStyles = {
+        control: (base) => ({
+            ...base,
+            height: '38px',
+            minHeight: '38px',
+            borderRadius: '6px',
+            borderColor: 'var(--border-color)',
+            boxShadow: 'none',
+            '&:hover': {
+                borderColor: '#94a3b8'
+            }
+        }),
+        valueContainer: (base) => ({
+            ...base,
+            height: '38px',
+            padding: '0 8px'
+        }),
+        input: (base) => ({
+            ...base,
+            margin: '0',
+            padding: '0'
+        }),
+        indicatorSeparator: () => ({
+            display: 'none'
+        }),
+        indicatorsContainer: (base) => ({
+            ...base,
+            height: '38px'
+        }),
+        menuList: (base) => ({
+            ...base,
+            maxHeight: '200px'
+        })
+    };
+
+    const entityOptions = availableEntities.map(e => ({
+        value: e.inventoryId,
+        label: e.displayName,
+        entity: e
+    }));
+
     return (
         <div className="modal-overlay">
-            <div className="modal" style={{ maxWidth: 800 }}>
-                <div className="modal-header">
+            <div className="modal" style={{ maxWidth: 800, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflow: 'hidden' }}>
+                <div className="modal-header" style={{ padding: '28px 28px 20px 28px', margin: 0, flexShrink: 0 }}>
                     <span>Add New Sale</span>
                     <button onClick={onClose} className="btn icon-btn"><X size={20}/></button>
                 </div>
-                <form onSubmit={onSubmit}>
+                <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+                    <div style={{ overflowY: 'auto', padding: '0 28px' }}>
                     <div style={{ display: 'flex', gap: 20 }}>
                         <div className="form-group" style={{ flex: 1 }}>
                             <label>Customer Name</label>
@@ -134,7 +179,13 @@ export function AddSaleModal({ onClose }) {
                         </div>
                         <div className="form-group" style={{ width: 160 }}>
                             <label>Date</label>
-                            <input type="date" value={date} onChange={e=>setDate(e.target.value)} required />
+                            <DatePicker 
+                                selected={date ? new Date(date) : null} 
+                                onChange={d => setDate(d ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0] : '')} 
+                                dateFormat="dd/MM/yyyy" 
+                                required 
+                                customInput={<input style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none' }} />}
+                            />
                         </div>
                     </div>
 
@@ -151,17 +202,16 @@ export function AddSaleModal({ onClose }) {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 3fr) 70px 100px 100px 40px', gap: '10px', alignItems: 'start' }}>
                                     
                                     <div>
-                                        <select 
-                                            value={item.inventoryId} 
-                                            onChange={e => handleItemChange(index, 'inventoryId', e.target.value)}
+                                        <Select
+                                            options={entityOptions}
+                                            value={entityOptions.find(o => o.value === item.inventoryId) || null}
+                                            onChange={opt => handleItemChange(index, 'inventoryId', opt ? opt.value : '')}
+                                            placeholder="Search product..."
+                                            isClearable
+                                            isSearchable
+                                            styles={selectStyles}
                                             required
-                                            style={{ width: '100%', height: '38px', padding: '0 8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
-                                        >
-                                            <option value="">Select Entity</option>
-                                            {availableEntities.map(e => (
-                                                <option key={e.inventoryId} value={e.inventoryId}>{e.displayName}</option>
-                                            ))}
-                                        </select>
+                                        />
                                         {selectedEntity && (
                                             <div style={{ fontSize: 11, color: selectedEntity.stock < item.qty ? 'var(--alert-color)' : 'var(--text-light)', marginTop: 4 }}>
                                                 Available: {selectedEntity.stock}
@@ -244,7 +294,8 @@ export function AddSaleModal({ onClose }) {
                         )}
                     </div>
 
-                    <div className="modal-footer" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 15, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    </div>
+                    <div className="modal-footer" style={{ padding: '15px 28px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, backgroundColor: 'var(--card-bg)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
                         <button type="button" className="btn btn-outline" onClick={onClose} disabled={loading}>Cancel</button>
                         <button type="submit" className="btn btn-primary" disabled={loading}>
                             {loading ? 'Completing Sale...' : 'Complete Sale'}

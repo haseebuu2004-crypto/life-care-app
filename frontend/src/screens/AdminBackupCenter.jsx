@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import useBackupStore from '../store/useBackupStore';
 import { Database, Download, Upload, Cloud, RefreshCw, AlertTriangle, FileSpreadsheet, FileText, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateTime } from '../utils/dateFormatter';
 
 export function AdminBackupCenter() {
     const { backupLogs, loading, generating, restoring, fetchBackupLogs, generateBackup, validateRestore, confirmRestore } = useBackupStore();
@@ -218,7 +219,7 @@ export function AdminBackupCenter() {
                             {backupLogs.map((log) => (
                                 <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                     <td style={{ padding: '16px 24px', fontSize: 14, color: '#334155' }}>
-                                        {format(new Date(log.created_at), 'MMM dd, yyyy HH:mm')}
+                                        {formatDateTime(log.created_at)}
                                     </td>
                                     <td style={{ padding: '16px 24px', fontSize: 14 }}>
                                         <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: 4, textTransform: 'capitalize' }}>

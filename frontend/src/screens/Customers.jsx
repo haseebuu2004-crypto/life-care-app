@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { formatRupees } from '../utils/currency';
 import { Search, ChevronDown, ChevronRight, Users, X, Calendar, DollarSign } from 'lucide-react';
+import { formatDate } from '../utils/dateFormatter';
 import EmptyState from '../components/EmptyState';
 
 import api from '../services/api';
@@ -91,7 +92,7 @@ function CustomerDetails({ customerId, onClose }) {
                                 <tbody>
                                     {sales.slice(0, 50).map((s, i) => (
                                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '8px 12px' }}>{new Date(s.sale_date).toLocaleDateString()}</td>
+                                            <td style={{ padding: '8px 12px' }}>{formatDate(s.sale_date)}</td>
                                             <td style={{ padding: '8px 12px' }}>{s.product_name}</td>
                                             <td style={{ padding: '8px 12px', textAlign: 'center' }}>{s.quantity}</td>
                                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>{formatRupees(Number(s.price_charged || 0))}</td>
@@ -120,7 +121,7 @@ function CustomerDetails({ customerId, onClose }) {
                                 <tbody>
                                     {attendance.slice(0, 50).map((a, i) => (
                                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '8px 12px' }}>{new Date(a.attendance_date).toLocaleDateString()}</td>
+                                            <td style={{ padding: '8px 12px' }}>{formatDate(a.attendance_date)}</td>
                                             <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--accent-color)', fontWeight: 'bold' }}>
                                                 {a.shake_amount !== null ? formatRupees(Number(a.shake_amount)) : '—'}
                                             </td>
@@ -152,7 +153,7 @@ function CustomerRow({ customer }) {
                     {!customer.is_active && <span style={{ fontSize: 11, color: 'var(--alert-color)' }}>Inactive</span>}
                 </td>
                 <td style={{ padding: '12px 16px', color: 'var(--text-light)' }}>
-                    {customer.joined_at ? new Date(customer.joined_at).toLocaleDateString() : 'N/A'}
+                    {customer.joined_at ? formatDate(customer.joined_at) : 'N/A'}
                 </td>
                 <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold' }}>
                     {formatRupees(Number(customer.total_sales_revenue || 0))}

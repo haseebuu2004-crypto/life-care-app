@@ -5,6 +5,8 @@ import { formatRupees } from '../utils/currency';
 import { usePermissions } from '../hooks/usePermissions';
 import { Navigate } from "@/utils/routerShim";
 import { TrendingUp, Zap, BarChart2, Package, AlertTriangle, Users, Download, Trash2, Calendar } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { SetupWizard } from './SetupWizard';
 import { LoginActivity } from './LoginActivity';
@@ -115,9 +117,19 @@ function DashboardInner() {
 
                     {dateRange === 'custom' && (
                         <>
-                            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />
+                            <DatePicker 
+                                selected={customStart ? new Date(customStart) : null} 
+                                onChange={d => setCustomStart(d ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0] : '')} 
+                                dateFormat="dd/MM/yyyy" 
+                                customInput={<input style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />}
+                            />
                             <span>-</span>
-                            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />
+                            <DatePicker 
+                                selected={customEnd ? new Date(customEnd) : null} 
+                                onChange={d => setCustomEnd(d ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0] : '')} 
+                                dateFormat="dd/MM/yyyy" 
+                                customInput={<input style={{ padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border-color)' }} />}
+                            />
                         </>
                     )}
                 </div>
