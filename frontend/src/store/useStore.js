@@ -185,14 +185,16 @@ const useStore = create((set, get) => ({
     fetchData: async () => {
         set({ isLoading: true });
         try {
-            await get().fetchProducts();
-            await get().fetchStock();
-            await get().fetchInventoryEntities();
-            await get().fetchSales();
-            await get().fetchAttendance();
-            await get().fetchCustomers();
-            await get().fetchDashboardStats();
-            await get().fetchUnreadCount();
+            await Promise.allSettled([
+                get().fetchProducts(),
+                get().fetchStock(),
+                get().fetchInventoryEntities(),
+                get().fetchSales(),
+                get().fetchAttendance(),
+                get().fetchCustomers(),
+                get().fetchDashboardStats(),
+                get().fetchUnreadCount()
+            ]);
         } catch (error) {
             console.error('fetchData error:', error);
             get().showToast('Failed to load data. Please refresh.', 'error');
@@ -276,7 +278,10 @@ const useStore = create((set, get) => ({
                 const idx = newEntities.findIndex(e => e.inventoryId === targetId);
                 if (idx !== -1) {
                     newEntities[idx] = { ...newEntities[idx] };
-                    newEntities[idx].stock += parseInt(payload.quantity || 0);
+                    newEntities[idx] = {
+                        ...newEntities[idx],
+                        stock: newEntities[idx].stock + parseInt(payload.quantity || 0)
+                    };
                     newEntities[idx].hasStockRecord = true;
                 }
                 
@@ -284,7 +289,10 @@ const useStore = create((set, get) => ({
                 const sIdx = newStock.findIndex(s => s.flavour_id === targetId);
                 if (sIdx !== -1) {
                     newStock[sIdx] = { ...newStock[sIdx] };
-                    newStock[sIdx].qty += parseInt(payload.quantity || 0);
+                    newStock[sIdx] = {
+                        ...newStock[sIdx],
+                        qty: newStock[sIdx].qty + parseInt(payload.quantity || 0)
+                    };
                 }
                 
                 return { inventoryEntities: newEntities, stock: newStock };
@@ -305,11 +313,21 @@ const useStore = create((set, get) => ({
             set((state) => {
                 let newEntities = [...state.inventoryEntities];
                 const idx = newEntities.findIndex(e => e.inventoryId === id);
-                if (idx !== -1) newEntities[idx].stock += Number(qty_add);
+                if (idx !== -1) {
+                    newEntities[idx] = {
+                        ...newEntities[idx],
+                        stock: newEntities[idx].stock + Number(qty_add)
+                    };
+                }
                 
                 let newStock = [...state.stock];
                 const sIdx = newStock.findIndex(s => s.flavour_id === id || s.stock_id === id);
-                if (sIdx !== -1) newStock[sIdx].qty += Number(qty_add);
+                if (sIdx !== -1) {
+                    newStock[sIdx] = {
+                        ...newStock[sIdx],
+                        qty: newStock[sIdx].qty + Number(qty_add)
+                    };
+                }
                 
                 return { inventoryEntities: newEntities, stock: newStock };
             });
@@ -395,74 +413,104 @@ const useStore = create((set, get) => ({
 
     // Sales
     addSale: async (payload) => {
+        let prevState = null;
+        
+        // True Optimistic UI update (before API call)
+        set((state) => {
+            prevState = { 
+                inventoryEntities: state.inventoryEntities, 
+                dashboardStats: state.dashboardStats 
+            };
+            let newEntities = [...state.inventoryEntities];
+            let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
+            
+            if (payload.items) {
+                let additionalRevenue = 0;
+                payload.items.forEach(soldItem => {
+                    additionalRevenue += (soldItem.price_charged * soldItem.quantity);
+                    const idx = newEntities.findIndex(e => e.inventoryId === soldItem.inventoryId);
+                    if (idx !== -1) {
+                        newEntities[idx] = {
+                            ...newEntities[idx],
+                            stock: Math.max(0, newEntities[idx].stock - soldItem.quantity)
+                        };
+                    }
+                });
+                
+                if (newStats && newStats.totals) {
+                    newStats.totals.totalSalesRevenue += additionalRevenue;
+                    // Rough estimate for profit, full accuracy restored on next refresh
+                    newStats.totals.totalSalesProfit += additionalRevenue * 0.4; 
+                }
+            }
+            return { inventoryEntities: newEntities, dashboardStats: newStats };
+        });
+
         try {
             const res = await api.post('/sales', payload);
-            
-            // Optimistic UI updates
-            set((state) => {
-                let newEntities = [...state.inventoryEntities];
-                let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
-                
-                if (payload.items) {
-                    let additionalRevenue = 0;
-                    payload.items.forEach(soldItem => {
-                        additionalRevenue += (soldItem.price_charged * soldItem.quantity);
-                        const idx = newEntities.findIndex(e => e.inventoryId === soldItem.inventoryId);
-                        if (idx !== -1) {
-                            newEntities[idx].stock = Math.max(0, newEntities[idx].stock - soldItem.quantity);
-                        }
-                    });
-                    
-                    if (newStats && newStats.totals) {
-                        newStats.totals.totalSalesRevenue += additionalRevenue;
-                        // Rough estimate for profit, full accuracy restored on next refresh
-                        newStats.totals.totalSalesProfit += additionalRevenue * 0.4; 
-                    }
-                }
-                return { inventoryEntities: newEntities, dashboardStats: newStats };
-            });
 
-            // Fetch in background to sync exact IDs and exact profit math from the DB
-            Promise.all([get().fetchSales(), get().fetchDashboardStats()]).catch(console.error);
+            // Fetch in background to sync exact IDs, accurate profit math, and exact stock from the DB
+            Promise.all([
+                get().fetchSales(), 
+                get().fetchDashboardStats(),
+                get().fetchInventoryEntities()
+            ]).catch(console.error);
+            
             return extract(res);
         } catch (error) {
+            if (prevState) set(prevState); // Rollback on failure
             throw new Error(getErrorMsg(error, 'Failed to add sale'));
         }
     },
     deleteSale: async (id) => {
+        let prevState = null;
+        
+        // True Optimistic UI update (before API call)
+        set((state) => {
+            prevState = { 
+                sales: state.sales, 
+                inventoryEntities: state.inventoryEntities, 
+                dashboardStats: state.dashboardStats 
+            };
+            const deletedSale = state.sales.find(s => s.id === id);
+            let newEntities = [...state.inventoryEntities];
+            let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
+
+            if (deletedSale && deletedSale.items) {
+                deletedSale.items.forEach(item => {
+                    const idx = newEntities.findIndex(e => e.inventoryId === item.inventoryId);
+                    if (idx !== -1) {
+                        newEntities[idx] = {
+                            ...newEntities[idx],
+                            stock: newEntities[idx].stock + item.qty
+                        };
+                    }
+                });
+                
+                if (newStats && newStats.totals) {
+                    newStats.totals.totalSalesRevenue -= deletedSale.total_amount;
+                    newStats.totals.totalSalesProfit -= deletedSale.total_profit;
+                }
+            }
+            
+            return { 
+                sales: state.sales.filter(s => s.id !== id),
+                inventoryEntities: newEntities,
+                dashboardStats: newStats
+            };
+        });
+
         try {
             const res = await api.delete(`/sales/${id}`);
-            
-            // Optimistic UI updates
-            set((state) => {
-                const deletedSale = state.sales.find(s => s.id === id);
-                let newEntities = [...state.inventoryEntities];
-                let newStats = state.dashboardStats ? JSON.parse(JSON.stringify(state.dashboardStats)) : null;
 
-                if (deletedSale && deletedSale.items) {
-                    deletedSale.items.forEach(item => {
-                        const idx = newEntities.findIndex(e => e.inventoryId === item.inventoryId);
-                        if (idx !== -1) {
-                            newEntities[idx].stock += item.qty;
-                        }
-                    });
-                    
-                    if (newStats && newStats.totals) {
-                        newStats.totals.totalSalesRevenue -= deletedSale.total_amount;
-                        newStats.totals.totalSalesProfit -= deletedSale.total_profit;
-                    }
-                }
-                
-                return { 
-                    sales: state.sales.filter(s => s.id !== id),
-                    inventoryEntities: newEntities,
-                    dashboardStats: newStats
-                };
-            });
-
-            Promise.all([get().fetchSales(), get().fetchDashboardStats()]).catch(console.error);
+            Promise.all([
+                get().fetchSales(), 
+                get().fetchDashboardStats(),
+                get().fetchInventoryEntities()
+            ]).catch(console.error);
             return extract(res);
         } catch (error) {
+            if (prevState) set(prevState); // Rollback on failure
             const msg = error.response?.data?.message || 'Failed to delete sale';
             throw new Error(msg);
         }
@@ -595,5 +643,47 @@ const useStore = create((set, get) => ({
         }
     },
 }));
+
+// Cross-tab background synchronization
+if (typeof window !== 'undefined') {
+    let lastFetchTime = 0;
+    const THROTTLE_MS = 5000; // 5 seconds throttle
+
+    window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            const now = Date.now();
+            console.log(`[VisibilitySync] Tab became visible at ${new Date(now).toISOString()}`);
+            
+            if (now - lastFetchTime > THROTTLE_MS) {
+                console.log(`[VisibilitySync] PASSED throttle check. Last fetch was ${(now - lastFetchTime) / 1000}s ago. Fetching...`);
+                const store = useStore.getState();
+                if (store.user) {
+                    lastFetchTime = now;
+                    
+                    const tStart = Date.now();
+                    const p1 = store.fetchInventoryEntities().then(() => {
+                        console.log(`[VisibilitySync] fetchInventoryEntities resolved in ${Date.now() - tStart}ms`);
+                    });
+                    const p2 = store.fetchSales().then(() => {
+                        console.log(`[VisibilitySync] fetchSales resolved in ${Date.now() - tStart}ms`);
+                    });
+                    const p3 = store.fetchDashboardStats().then(() => {
+                        console.log(`[VisibilitySync] fetchDashboardStats resolved in ${Date.now() - tStart}ms`);
+                    });
+
+                    Promise.all([p1, p2, p3]).then(() => {
+                        console.log(`[VisibilitySync] ALL fetches resolved in ${Date.now() - tStart}ms`);
+                    }).catch(err => {
+                        console.error(`[VisibilitySync] Error during sync:`, err);
+                    });
+                } else {
+                    console.log(`[VisibilitySync] BLOCKED: No active user session.`);
+                }
+            } else {
+                console.log(`[VisibilitySync] BLOCKED by throttle. Last fetch was only ${(now - lastFetchTime) / 1000}s ago.`);
+            }
+        }
+    });
+}
 
 export default useStore;

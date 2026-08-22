@@ -30,10 +30,6 @@ exports.markAttendance = async (ownerId, recordedBy, body) => {
     try {
         let { customerId, customerName, date, type, shakeProfit } = body;
         
-        if (!customerId && customerName) {
-            customerId = await customerService.findOrCreateCustomer(ownerId, customerName, recordedBy);
-        }
-
         if (type === 'default' && shakeProfit === undefined) {
             const confQuery = queries.getConfigShakeAmount(ownerId);
             const conf = await db.query(confQuery.text, confQuery.values);
@@ -42,17 +38,39 @@ exports.markAttendance = async (ownerId, recordedBy, body) => {
 
         const shakeAmountPaise = Math.round(Number(shakeProfit || 0) * 100);
         
-        const attQuery = queries.upsertAttendance(ownerId, customerId, date, type, shakeAmountPaise, recordedBy);
+        const attQuery = queries.upsertAttendanceAtomic(ownerId, customerId, customerName, date, type, shakeAmountPaise, recordedBy);
+        
+        const t1 = Date.now();
+        console.log(`[TIMING] 1. Backend: before mark_attendance_atomic DB call:`, t1);
+        
         const attRes = await db.query(attQuery.text, attQuery.values);
+        
+        const t2 = Date.now();
+        console.log(`[TIMING] 2. Backend: after mark_attendance_atomic DB call (${t2 - t1}ms):`, t2);
 
         if (!attRes || !attRes.rows || attRes.rows.length === 0) {
             throw new Error("Attendance already marked for this member today.");
         }
 
-        await audit.logAction(recordedBy, 'ATTENDANCE_MARK', 'attendance', attRes.rows[0].id);
-        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+        const resultData = attRes.rows[0].result;
+        const finalAttendanceId = resultData.attendance_id;
+        const finalCustomerId = resultData.customer_id;
+        const isNewCustomer = resultData.is_new_customer;
+
+        // Fire and forget side-effects so the frontend doesn't wait
+        (async () => {
+            try {
+                if (isNewCustomer && customerName) {
+                    await audit.logAction(recordedBy, 'ADD_CUSTOMER', 'customers', finalCustomerId);
+                }
+                await audit.logAction(recordedBy, 'ATTENDANCE_MARK', 'attendance', finalAttendanceId);
+                await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+            } catch (err) {
+                console.error('[AttendanceService] Async side-effects error:', err);
+            }
+        })();
         
-        return attRes.rows[0].id;
+        return finalAttendanceId;
     } catch (error) {
         console.error('[AttendanceService] error:', error);
         throw error;

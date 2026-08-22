@@ -10,9 +10,15 @@ exports.validateAddProduct = (req, res, next) => {
 };
 
 exports.validateAddFlavour = (req, res, next) => {
-    // Legacy didn't strictly return early here, it just caught PG constraint error.
-    // Wait, the legacy controller didn't have explicit missing fields validation for flavours.
-    // It just relied on DB errors or crash. So I will NOT invent validation rules!
-    // The Golden Rule states: "Copy all product validation rules EXACTLY... No validation changes allowed."
+    const { name, product_id, product_version_id } = req.body;
+    
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ success: false, message: "Variant/Flavour name is required" });
+    }
+    
+    if (!product_id && !product_version_id) {
+        return res.status(400).json({ success: false, message: "Product ID or Product Version ID is required" });
+    }
+    
     next();
 };

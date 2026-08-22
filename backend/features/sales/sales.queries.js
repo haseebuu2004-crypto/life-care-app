@@ -92,10 +92,10 @@ exports.getAllSalesAdmin = (ownerId, recordedById) => {
 // Create Sale Atomic — calls PG stored procedure
 // Source: salesService.js line 94-96
 // ============================================================
-exports.createSaleAtomic = (ownerId, customerId, date, recordedBy, itemsJson) => {
+exports.createSaleAtomic = (ownerId, customerId, customerName, date, recordedBy, itemsJson) => {
     return {
-        text: `SELECT create_sale_atomic($1, $2, $3, $4, $5::jsonb) as sale_id`,
-        values: [ownerId, customerId, date, recordedBy, JSON.stringify(itemsJson)]
+        text: `SELECT create_sale_atomic($1, $2, $3, $4, $5, $6::jsonb) as result`,
+        values: [ownerId, customerId || null, customerName || '', date, recordedBy, JSON.stringify(itemsJson)]
     };
 };
 

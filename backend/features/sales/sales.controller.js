@@ -68,16 +68,15 @@ exports.getSales = async (req, res) => {
 };
 
 exports.addSale = async (req, res) => {
+    console.log("RECEIVED PAYLOAD:", req.body);
+    const t3 = Date.now();
+    console.log(`[TIMING] 3. Backend: the instant the request is received by the route handler:`, t3);
     try {
         const ownerId = req.user.owner_id || req.user.id;
         const recordedBy = req.user.id;
         let { customer_id, customer_name, sale_date, items } = req.body;
-        
-        if (!customer_id && customer_name) {
-            customer_id = await customerService.findOrCreateCustomer(ownerId, customer_name, recordedBy);
-        }
 
-        if (!customer_id) return res.status(400).json({ success: false, message: "Valid customer is required" });
+        if (!customer_id && !customer_name) return res.status(400).json({ success: false, message: "Valid customer is required" });
         if (!items || items.length === 0) return res.status(400).json({ success: false, message: "No items provided" });
         
         // Aggregate identical products based on productVersionId and inventoryId
@@ -104,7 +103,9 @@ exports.addSale = async (req, res) => {
         
         const uniqueItems = Object.values(mergedItems);
         
-        await salesService.addSaleTransaction(sale_date, customer_id, uniqueItems, ownerId, recordedBy);
+        await salesService.addSaleTransaction(sale_date, customer_id, customer_name, uniqueItems, ownerId, recordedBy);
+        const t6 = Date.now();
+        console.log(`[TIMING] 6. Backend: the instant res.json() is called (response sent):`, t6);
         res.json({ success: true, data: null });
     } catch (error) {
         if (error.message && error.message.includes('Unauthorized')) {

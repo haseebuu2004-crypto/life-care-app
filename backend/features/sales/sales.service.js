@@ -57,7 +57,7 @@ exports.getAllSales = async (ownerId, recordedById = null) => {
     }
 };
 
-exports.addSaleTransaction = async (date, customerId, uniqueItems, ownerId, recordedBy) => {
+exports.addSaleTransaction = async (date, customerId, customerName, uniqueItems, ownerId, recordedBy) => {
     if (!ownerId) throw new Error('Unauthorized: missing ownerId');
     
     const itemsJson = uniqueItems.map(p => ({
@@ -70,62 +70,80 @@ exports.addSaleTransaction = async (date, customerId, uniqueItems, ownerId, reco
     }));
 
     try {
-        const atomicQuery = queries.createSaleAtomic(ownerId, customerId, date, recordedBy, itemsJson);
+        const atomicQuery = queries.createSaleAtomic(ownerId, customerId, customerName, date, recordedBy, itemsJson);
+        const t4 = Date.now();
+        console.log(`[TIMING] 4. Backend: the instant BEFORE create_sale_atomic DB call starts:`, t4);
         const res = await db.query(atomicQuery.text, atomicQuery.values);
+        const t5 = Date.now();
+        console.log(`[TIMING] 5. Backend: the instant AFTER create_sale_atomic DB call returns:`, t5);
         
         if (!res || !res.rows || res.rows.length === 0) {
             throw new Error("Failed to create sale transaction");
         }
         
-        const saleId = res.rows[0].sale_id;
+        const resultData = res.rows[0].result;
+        const saleId = resultData.sale_id;
+        const finalCustomerId = resultData.customer_id;
+        const isNewCustomer = resultData.is_new_customer;
         
         const isBackdated = date !== new Date().toLocaleDateString('en-CA');
         const logAction = isBackdated ? 'SALE_CREATE_BACKDATED' : 'SALE_CREATE';
         
-        await audit.logAction(recordedBy, logAction, 'sales', saleId);
-        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
-        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+        // Fire and forget side-effects so the frontend doesn't wait
+        (async () => {
+            try {
+                if (isNewCustomer && customerName) {
+                    await audit.logAction(recordedBy, 'ADD_CUSTOMER', 'customers', finalCustomerId);
+                }
+                
+                await audit.logAction(recordedBy, logAction, 'sales', saleId);
+                await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+                await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
 
-        // Check for notifications — lazy require to avoid circular dependency
-        const notifService = require('../notifications/notifications.service');
-        const configQuery = queries.getAdminConfig(ownerId);
-        const configRes = await db.query(configQuery.text, configQuery.values);
-        let config = configRes.rows[0] || {};
-        
-        if (config.low_stock_threshold === undefined || config.low_stock_threshold === null) {
-            const sysRes = await db.query("SELECT value FROM settings WHERE key = 'SYSTEM_LOW_STOCK_THRESHOLD'");
-            config.low_stock_threshold = sysRes.rows.length > 0 ? parseInt(sysRes.rows[0].value) : 10;
-        }
-        
-        if (config.discount_alert_pct === undefined || config.discount_alert_pct === null) {
-            config.discount_alert_pct = 30; // Original default
-        }
+                // Check for notifications — lazy require to avoid circular dependency
+                const notifService = require('../notifications/notifications.service');
+                const configQuery = queries.getAdminConfig(ownerId);
+                const configRes = await db.query(configQuery.text, configQuery.values);
+                let config = configRes.rows[0] || {};
+                
+                if (config.low_stock_threshold === undefined || config.low_stock_threshold === null) {
+                    const sysRes = await db.query("SELECT value FROM settings WHERE key = 'SYSTEM_LOW_STOCK_THRESHOLD'");
+                    config.low_stock_threshold = sysRes.rows.length > 0 ? parseInt(sysRes.rows[0].value) : 10;
+                }
+                
+                if (config.discount_alert_pct === undefined || config.discount_alert_pct === null) {
+                    config.discount_alert_pct = 30; // Original default
+                }
 
-        // Fetch staff / recorder's name
-        const userQuery = queries.getStaffEmail(recordedBy);
-        const userRes = await db.query(userQuery.text, userQuery.values);
-        const staffName = userRes.rows[0]?.email ? userRes.rows[0].email.split('@')[0] : 'Staff';
+                // Fetch staff / recorder's name
+                const userQuery = queries.getStaffEmail(recordedBy);
+                const userRes = await db.query(userQuery.text, userQuery.values);
+                const staffName = userRes.rows[0]?.email ? userRes.rows[0].email.split('@')[0] : 'Staff';
 
-        // Fetch customer's name
-        const custQuery = queries.getCustomerName(customerId);
-        const custRes = await db.query(custQuery.text, custQuery.values);
-        const customerName = custRes.rows[0]?.name || 'Customer';
+                // Fetch customer's name
+                const custQuery = queries.getCustomerName(customerId);
+                const custRes = await db.query(custQuery.text, custQuery.values);
+                const customerName = custRes.rows[0]?.name || 'Customer';
 
-        for (const p of itemsJson) {
-            // Check stock remaining
-            const stockQuery = queries.getRemainingStock(p.product_version_id, p.variant_id, ownerId);
-            const stockRes = await db.query(stockQuery.text, stockQuery.values);
-            const remaining = stockRes.rows[0]?.quantity || 0;
-            const prodNameQuery = queries.getProductName(p.product_version_id);
-            const productNameRes = await db.query(prodNameQuery.text, prodNameQuery.values);
-            const prodName = productNameRes.rows[0]?.name || 'Product';
+                for (const p of itemsJson) {
+                    // Check stock remaining
+                    const stockQuery = queries.getRemainingStock(p.product_version_id, p.variant_id, ownerId);
+                    const stockRes = await db.query(stockQuery.text, stockQuery.values);
+                    const remaining = stockRes.rows[0]?.quantity || 0;
+                    const prodNameQuery = queries.getProductName(p.product_version_id);
+                    const productNameRes = await db.query(prodNameQuery.text, prodNameQuery.values);
+                    const prodName = productNameRes.rows[0]?.name || 'Product';
 
-            if (remaining === 0) {
-                await notifService.createNotification(ownerId, 'out_of_stock', `${prodName} is out of stock`, `All units have been sold. Add stock to continue selling.`, { product_name: prodName }, true);
-            } else if (remaining < config.low_stock_threshold) {
-                await notifService.createNotification(ownerId, 'low_stock', `${prodName} is running low`, `Only ${remaining} units remaining. Consider restocking soon.`, { product_name: prodName, quantity: remaining }, false);
+                    if (remaining === 0) {
+                        await notifService.createNotification(ownerId, 'out_of_stock', `${prodName} is out of stock`, `All units have been sold. Add stock to continue selling.`, { product_name: prodName }, true);
+                    } else if (remaining < config.low_stock_threshold) {
+                        await notifService.createNotification(ownerId, 'low_stock', `${prodName} is running low`, `Only ${remaining} units remaining. Consider restocking soon.`, { product_name: prodName, quantity: remaining }, false);
+                    }
+                }
+            } catch (err) {
+                console.error('[SalesService] Async side-effects error:', err);
             }
-        }
+        })();
     } catch (e) {
         if (e.message.includes('INSUFFICIENT_STOCK')) {
             throw new Error('Insufficient stock');
@@ -145,9 +163,16 @@ exports.deleteSaleTransaction = async (saleId, ownerId, deletedBy) => {
             throw new Error("Sale not found or already deleted");
         }
 
-        await audit.logAction(deletedBy, 'SALE_DELETE', 'sales', saleId);
-        await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
-        await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+        // Fire and forget side-effects so the frontend doesn't wait
+        (async () => {
+            try {
+                await audit.logAction(deletedBy, 'SALE_DELETE', 'sales', saleId);
+                await cache.invalidateCachePattern(`dashboard_stats:${ownerId}:*`);
+                await cache.invalidateCachePattern(`inventory_entities:${ownerId}`);
+            } catch (err) {
+                console.error('[SalesService] Async side-effects error in deleteSale:', err);
+            }
+        })();
     } catch (error) {
         console.error('[SalesService] error:', error);
         throw error;

@@ -6,20 +6,35 @@ const sql = `
 CREATE OR REPLACE FUNCTION create_sale_atomic(
   p_owner_id UUID,
   p_customer_id UUID,
+  p_customer_name VARCHAR,
   p_sale_date DATE,
   p_recorded_by UUID,
   p_items JSONB  -- array of {product_version_id, variant_id, quantity, price_charged, standard_price_snap, vendor_price_snap}
 )
-RETURNS UUID AS $$
+RETURNS JSONB AS $$
 DECLARE
   v_sale_id UUID;
+  v_customer_id UUID := p_customer_id;
+  v_is_new_customer BOOLEAN := FALSE;
   v_item JSONB;
   v_rows_affected INT;
   v_qty INT;
 BEGIN
+  -- Resolve Customer if not provided
+  IF v_customer_id IS NULL THEN
+    SELECT id INTO v_customer_id FROM customers WHERE owner_id = p_owner_id AND name ILIKE p_customer_name LIMIT 1;
+    
+    IF v_customer_id IS NOT NULL THEN
+      UPDATE customers SET name = p_customer_name WHERE id = v_customer_id AND name <> p_customer_name;
+    ELSE
+      INSERT INTO customers (owner_id, name) VALUES (p_owner_id, p_customer_name) RETURNING id INTO v_customer_id;
+      v_is_new_customer := TRUE;
+    END IF;
+  END IF;
+
   -- Insert sale header
   INSERT INTO sales (owner_id, customer_id, sale_date, recorded_by)
-  VALUES (p_owner_id, p_customer_id, p_sale_date, p_recorded_by)
+  VALUES (p_owner_id, v_customer_id, p_sale_date, p_recorded_by)
   RETURNING id INTO v_sale_id;
 
   -- Process each item
@@ -56,7 +71,11 @@ BEGIN
     );
   END LOOP;
 
-  RETURN v_sale_id;
+  RETURN jsonb_build_object(
+      'sale_id', v_sale_id,
+      'customer_id', v_customer_id,
+      'is_new_customer', v_is_new_customer
+  );
 END;
 $$ LANGUAGE plpgsql;
 

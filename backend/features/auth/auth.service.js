@@ -120,32 +120,27 @@ class AuthService {
             
             const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${rawToken}`;
             
-            if (process.env.SMTP_USER) {
-                if (process.env.EMAILJS_PUBLIC_KEY) {
-                    try {
-                        const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                service_id: 'service_xw04039',
-                                template_id: 'template_1a2mg5b',
-                                user_id: process.env.EMAILJS_PUBLIC_KEY,
-                                accessToken: process.env.EMAILJS_PRIVATE_KEY,
-                                template_params: {
-                                    to_email: registeredEmail,
-                                    subject: 'Password Reset - Life Care System',
-                                    message: `You requested a password reset. Please use the following link to reset your password. This link is valid for 15 minutes.\n\n${resetLink}\n\nIf you did not request this, please ignore this email.`
-                                }
-                            })
-                        });
-                        if (!emailjsRes.ok) {
-                            console.error("EmailJS Auth failed:", await emailjsRes.text());
-                        }
-                    } catch (emailErr) {
-                        console.error('Failed to send reset email via EmailJS:', emailErr);
+            if (process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY) {
+                try {
+                    const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            service_id: 'service_xw04039',
+                            template_id: 'template_ka8tghr',
+                            user_id: process.env.EMAILJS_PUBLIC_KEY,
+                            accessToken: process.env.EMAILJS_PRIVATE_KEY,
+                            template_params: {
+                                to_email: registeredEmail,
+                                link: resetLink
+                            }
+                        })
+                    });
+                    if (!emailjsRes.ok) {
+                        console.error("EmailJS Auth failed:", await emailjsRes.text());
                     }
-                } else {
-                    console.error('EMAILJS_PUBLIC_KEY not configured, cannot send reset email.');
+                } catch (emailErr) {
+                    console.error('Failed to send reset email via EmailJS:', emailErr);
                 }
             } else {
                 // Development-only stub — still avoids logging the raw token in production
