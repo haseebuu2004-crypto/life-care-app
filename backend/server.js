@@ -120,13 +120,19 @@ Sentry.setupExpressErrorHandler(app);
 const globalErrorHandler = require('./shared/middleware/errorHandler');
 app.use(globalErrorHandler);
 // Catch unhandled promise rejections and uncaught exceptions
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(reason);
+    await Sentry.flush(2000);
     // Do not exit the process, let it continue or gracefully restart depending on the env
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', async (err) => {
     console.error('Uncaught Exception thrown:', err);
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(err);
+    await Sentry.flush(2000);
     // Usually it's safer to restart the process here in production
     // process.exit(1); 
 });
