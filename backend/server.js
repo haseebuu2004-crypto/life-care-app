@@ -91,11 +91,6 @@ app.get('/health', async (req, res) => {
     }
 });
 
-// Sentry Debug Route
-app.get('/debug-sentry', function mainHandler(req, res) {
-    throw new Error('My first Sentry error!');
-});
-
 // API Routes
 app.use('/api', apiRoutes);
 
