@@ -2,9 +2,14 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const runMigrations = require('../migrations/index');
 
+const dbUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+const useSsl = dbUrl?.includes('supabase') || process.env.NODE_ENV === 'production' 
+    ? { rejectUnauthorized: false } 
+    : false;
+
 const pool = new Pool({
-    connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    connectionString: dbUrl,
+    ssl: useSsl,
     max: 12,
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 10000
