@@ -68,10 +68,8 @@ describe('Concurrent Login Policy', () => {
         // 101st session (should trigger eviction)
         sessions.push(await authService._generateSession(testUser, `1.1.1.101`, `Device 101`));
         
-        const s1 = sessions[0];
         const s100 = sessions[99];
         const s101 = sessions[100];
-
         const active = await authService.getActiveSessions(testUser.id, s101.rawToken);
         expect(active).toHaveLength(100);
         
