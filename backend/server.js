@@ -1,5 +1,11 @@
 process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16';
 require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
+
+const Sentry = require("@sentry/node");
+Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+});
+
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -85,6 +91,11 @@ app.get('/health', async (req, res) => {
     }
 });
 
+// Sentry Debug Route
+app.get('/debug-sentry', function mainHandler(req, res) {
+    throw new Error('My first Sentry error!');
+});
+
 // API Routes
 app.use('/api', apiRoutes);
 
@@ -102,10 +113,12 @@ app.use((req, res, next) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
+// Sentry Error Handler
+Sentry.setupExpressErrorHandler(app);
+
 // Global Error Handler (must be the last middleware)
 const globalErrorHandler = require('./shared/middleware/errorHandler');
 app.use(globalErrorHandler);
-
 // Catch unhandled promise rejections and uncaught exceptions
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
