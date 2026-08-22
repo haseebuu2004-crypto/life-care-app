@@ -28,7 +28,49 @@ exports.addAttendanceSchema = {
 
 exports.loginSchema = {
     body: z.object({
-        email: z.string().email("Invalid email format"),
+        email: z.string().min(1, "Email/Username is required"),
         password: z.string().min(1, "Password is required")
+    })
+};
+
+// --- PRODUCTS ---
+exports.addProductSchema = {
+    body: z.object({
+        name: z.string().min(1, "Product name required"),
+        vendor_price: z.union([z.number(), z.string()]).optional(),
+        vp: z.union([z.number(), z.string()]).optional(),
+        flavor: z.string().optional(),
+        volume_points: z.union([z.number(), z.string()]).optional(),
+        version_label: z.string().optional()
+    }).refine(data => data.vendor_price !== undefined || data.vp !== undefined, {
+        message: "Vendor price is required",
+        path: ["vendor_price"]
+    })
+};
+
+exports.updateProductPriceSchema = {
+    params: z.object({
+        id: z.string().regex(/^\d+$/, "Invalid Product ID")
+    }),
+    body: z.object({
+        vendor_price: z.union([z.number(), z.string()], { required_error: "Vendor price is required" }),
+        version_label: z.string().optional()
+    })
+};
+
+exports.addVariantSchema = {
+    body: z.object({
+        name: z.string().min(1, "Variant/Flavour name is required"),
+        product_id: z.union([z.number(), z.string()]).optional(),
+        product_version_id: z.union([z.number(), z.string()]).optional()
+    }).refine(data => data.product_id !== undefined || data.product_version_id !== undefined, {
+        message: "Product ID or Product Version ID is required",
+        path: ["product_id"]
+    })
+};
+
+exports.toggleStatusSchema = {
+    params: z.object({
+        id: z.string().regex(/^\d+$/, "Invalid ID")
     })
 };

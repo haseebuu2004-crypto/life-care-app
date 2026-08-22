@@ -8,21 +8,41 @@ jest.setTimeout(120000);
 
 describe('Concurrent Login Policy', () => {
     let testUser;
-    
+    let testUserId = null;
+
     beforeAll(async () => {
-        // Grab any user to test
-        const res = await db.query(`SELECT * FROM users LIMIT 1`);
-        if (res.rows.length === 0) {
-            throw new Error("No users found to test with");
-        }
-        testUser = res.rows[0];
+        // Create a test user for auth
+        const bcrypt = require('bcryptjs');
+        const hash = await bcrypt.hash('password123', 10);
+        const testEmail = `testadmin_${Date.now()}@test.com`;
+        
+        const res = await db.query(
+            `INSERT INTO users (email, password_hash, role, is_active) VALUES ($1, $2, $3, true) RETURNING id`,
+            [testEmail, hash, 'admin']
+        );
+        testUserId = res.rows[0].id;
+        
+        // Fetch the full user object
+        const userRes = await db.query(`SELECT * FROM users WHERE id = $1`, [testUserId]);
+        testUser = userRes.rows[0];
+        
+        // Set owner_id to self
+        await db.query(`UPDATE users SET owner_id = id WHERE id = $1`, [testUserId]);
         
         // Clear all existing sessions for test user
-        await db.query(`DELETE FROM sessions WHERE user_id = $1`, [testUser.id]);
+        await db.query(`DELETE FROM sessions WHERE user_id = $1`, [testUserId]);
     });
 
     afterAll(async () => {
-        await db.query(`DELETE FROM sessions WHERE user_id = $1`, [testUser.id]);
+        try {
+            if (testUserId) {
+                await db.query(`DELETE FROM sessions WHERE user_id = $1`, [testUserId]);
+                await db.query(`DELETE FROM audit_log WHERE actor_id = $1`, [testUserId]);
+                await db.query(`DELETE FROM users WHERE id = $1`, [testUserId]);
+            }
+        } catch (e) {
+            console.error("Teardown error ignored:", e.message);
+        }
         await db.pool.end();
     });
 
@@ -68,10 +88,8 @@ describe('Concurrent Login Policy', () => {
         // 101st session (should trigger eviction)
         sessions.push(await authService._generateSession(testUser, `1.1.1.101`, `Device 101`));
         
-        const s1 = sessions[0];
         const s100 = sessions[99];
         const s101 = sessions[100];
-
         const active = await authService.getActiveSessions(testUser.id, s101.rawToken);
         expect(active).toHaveLength(100);
         

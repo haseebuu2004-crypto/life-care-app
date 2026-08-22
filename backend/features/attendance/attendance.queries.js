@@ -49,6 +49,13 @@ exports.getConfigShakeAmount = (ownerId) => {
     };
 };
 
+exports.upsertAttendanceAtomic = (ownerId, customerId, customerName, date, type, shakeAmountPaise, recordedBy) => {
+    return {
+        text: `SELECT mark_attendance_atomic($1, $2, $3, $4, $5, $6, $7) as result`,
+        values: [ownerId, customerId || null, customerName || '', date, type, shakeAmountPaise, recordedBy]
+    };
+};
+
 exports.upsertAttendance = (ownerId, customerId, date, type, shakeAmountPaise, recordedBy) => {
     return {
         text: `

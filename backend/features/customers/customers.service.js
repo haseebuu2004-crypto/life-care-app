@@ -115,7 +115,16 @@ exports.findOrCreateCustomer = async (ownerId, customerName, userId) => {
             if (!newCust || !newCust.rows) throw new Error("Failed to create customer record.");
             const newId = newCust.rows[0]?.id;
             if (!newId) throw new Error("Failed to create customer record.");
-            await audit.logAction(userId, 'CUSTOMER_CREATE', 'customers', newId);
+            
+            // Fire and forget side-effects so the frontend doesn't wait
+            (async () => {
+                try {
+                    await audit.logAction(userId, 'CUSTOMER_CREATE', 'customers', newId);
+                } catch (err) {
+                    console.error('[CustomersService] Async side-effects error:', err);
+                }
+            })();
+            
             return newId;
         }
     } catch (error) {

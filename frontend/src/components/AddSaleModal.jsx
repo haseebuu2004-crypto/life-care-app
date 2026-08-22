@@ -70,6 +70,8 @@ export function AddSaleModal({ onClose }) {
 
     const onSubmit = async (e) => {
         e.preventDefault();
+        const t1 = Date.now();
+        console.log(`[TIMING] 1. Frontend: the instant the "Complete Sale" button is clicked:`, t1);
         
         if (!customerInput.trim()) return useStore.getState().showToast("Please select or enter a customer", "warn");
         
@@ -99,10 +101,16 @@ export function AddSaleModal({ onClose }) {
             const payload = {
                 sale_date: date,
                 items: itemsPayload,
-                customer_name: customerInput.trim()
+                customer_name: customerInput.trim(),
+                __timing_t1: t1 // pass it so backend can log it if needed
             };
 
+            const t2 = Date.now();
+            console.log(`[TIMING] 2. Frontend: the instant the API call actually leaves:`, t2);
             await addSale(payload);
+            const t7 = Date.now();
+            console.log(`[TIMING] 7. Frontend: the instant the response is received by the client:`, t7);
+            
             useStore.getState().showToast("Sale completed successfully", "success");
             onClose();
         } catch (err) {
@@ -110,6 +118,11 @@ export function AddSaleModal({ onClose }) {
             useStore.getState().showToast(msg, "error");
         } finally {
             setLoading(false);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    console.log(`[TIMING] 8. Frontend: the instant the UI actually updates/unfreezes:`, Date.now());
+                });
+            });
         }
     };
 

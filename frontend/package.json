@@ -11,23 +11,23 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "axios": "^1.16.1",
-    "date-fns": "^4.3.0",
-    "firebase": "^12.13.0",
-    "lucide-react": "^1.16.0",
+    "axios": "1.16.1",
+    "date-fns": "4.3.0",
+    "firebase": "12.13.0",
+    "lucide-react": "1.16.0",
     "next": "16.2.6",
-    "nodemailer": "^8.0.11",
+    "nodemailer": "8.0.11",
     "react": "19.2.4",
-    "react-datepicker": "^9.1.0",
+    "react-datepicker": "9.1.0",
     "react-dom": "19.2.4",
-    "react-select": "^5.10.2",
-    "zustand": "^5.0.13"
+    "react-select": "5.10.2",
+    "zustand": "5.0.13"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "dotenv": "^17.4.2",
-    "eslint": "^9",
+    "@playwright/test": "1.60.0",
+    "dotenv": "17.4.2",
+    "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
-    "pg": "^8.21.0"
+    "pg": "8.21.0"
   }
 }

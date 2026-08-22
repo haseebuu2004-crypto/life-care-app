@@ -316,20 +316,20 @@ exports.requestResetOtp = async (userId, email, password, origin) => {
     
     const expiresAtIso = new Date(expiresAtMs).toISOString();
     
-    if (process.env.EMAILJS_PUBLIC_KEY) {
+    if (process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY) {
         try {
             const emailjsRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     service_id: 'service_xw04039',
-                    template_id: 'template_1a2mg5b',
+                    template_id: 'template_17aiqwy',
                     user_id: process.env.EMAILJS_PUBLIC_KEY,
                     accessToken: process.env.EMAILJS_PRIVATE_KEY,
                     template_params: {
                         to_email: email,
-                        subject: 'Data Reset OTP - Life Care System',
-                        message: `Your OTP for hard resetting all club data is: ${otpCode}.\n\nThis code will expire in 10 minutes.\nIf you did not request this, please change your password immediately.`
+                        passcode: otpCode,
+                        time: new Date(expiresAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                     }
                 })
             });

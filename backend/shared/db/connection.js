@@ -1,16 +1,48 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 
+const dbUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+const useSsl = dbUrl?.includes('supabase') || process.env.NODE_ENV === 'production' 
+    ? { rejectUnauthorized: false } 
+    : false;
+
 const pool = new Pool({
-    connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // Required for Supabase usually
-    max: 15 // Lowered to 15 to strictly protect free-tier connection limits
+    connectionString: dbUrl,
+    ssl: useSsl,
+    max: 12,
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 10000
 });
 
 pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
-    // Removed process.exit(-1) because the pool will automatically reconnect/recover
 });
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function withRetry(operation, name = 'DB Operation') {
+    let retries = 3;
+    let delay = 1000;
+    while (retries > 0) {
+        try {
+            return await operation();
+        } catch (error) {
+            retries--;
+            if (retries === 0) {
+                console.error(`[${name}] Failed after 3 retries:`, error.message);
+                throw error;
+            }
+            console.warn(`[${name}] Error: ${error.message}. Retrying in ${delay}ms... (${retries} attempts left)`);
+            await sleep(delay);
+            delay *= 2; // exponential backoff
+        }
+    }
+}
+
+// Wrap standard pool methods to include retry logic
+const wrappedPool = Object.create(pool);
+wrappedPool.connect = async () => withRetry(() => pool.connect(), 'pool.connect');
+wrappedPool.query = async (text, params) => withRetry(() => pool.query(text, params), 'pool.query');
 
 async function initDB() {
     try {
@@ -203,6 +235,6 @@ async function createTables() {
 initDB();
 
 module.exports = {
-  query: (text, params) => pool.query(text, params),
-  pool
+  query: wrappedPool.query,
+  pool: wrappedPool
 };

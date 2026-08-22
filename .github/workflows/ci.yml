@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install Dependencies
+      run: |
+        cd backend
+        npm ci
+
+    - name: Push Database Schema
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/testdb
+      run: |
+        cd backend
+        npx prisma db push
+
+    - name: Run Tests
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/testdb
+        JWT_SECRET: test-jwt-secret
+        PORT: 3000
+      run: |
+        cd backend
+        npx jest

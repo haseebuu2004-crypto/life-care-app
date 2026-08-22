@@ -65,6 +65,26 @@ app.use((req, res, next) => {
     next();
 });
 
+// Health Check Endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Verify database connectivity
+        await db.query('SELECT 1');
+        res.status(200).json({ 
+            status: 'ok', 
+            database: 'connected', 
+            timestamp: new Date().toISOString() 
+        });
+    } catch (error) {
+        console.error('Health Check Failed:', error.message);
+        res.status(503).json({ 
+            status: 'error', 
+            database: 'disconnected', 
+            timestamp: new Date().toISOString() 
+        });
+    }
+});
+
 // API Routes
 app.use('/api', apiRoutes);
 
@@ -77,8 +97,25 @@ app.use('/api', (req, res) => {
 });
 
 // React Router Fallback
-app.use((req, res) => {
+app.use((req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) return next();
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
+// Global Error Handler (must be the last middleware)
+const globalErrorHandler = require('./shared/middleware/errorHandler');
+app.use(globalErrorHandler);
+
+// Catch unhandled promise rejections and uncaught exceptions
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Do not exit the process, let it continue or gracefully restart depending on the env
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception thrown:', err);
+    // Usually it's safer to restart the process here in production
+    // process.exit(1); 
 });
 
 // We export `app` for testing purposes
