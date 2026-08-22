@@ -1,6 +1,10 @@
 // Global Error Handler Middleware
 function globalErrorHandler(err, req, res, next) {
     console.error(`[ERROR] ${req.method} ${req.originalUrl} -`, err);
+    
+    // Explicit Sentry fallback
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(err);
 
     // If headers have already been sent, delegate to Express default error handler
     if (res.headersSent) {
