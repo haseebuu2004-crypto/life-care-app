@@ -91,11 +91,6 @@ app.get('/health', async (req, res) => {
     }
 });
 
-// Sentry Debug Route
-app.get('/debug-sentry', function mainHandler(req, res) {
-    throw new Error('My first Sentry error!');
-});
-
 // API Routes
 app.use('/api', apiRoutes);
 
@@ -107,10 +102,17 @@ app.use('/api', (req, res) => {
     res.status(404).json({ error: "API Endpoint Not Found" });
 });
 
-// React Router Fallback
+// React Router Fallback / API Root
+const fs = require('fs');
 app.use((req, res, next) => {
     if (req.originalUrl.startsWith('/api')) return next();
-    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+    
+    const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(200).json({ message: "API Server Running" });
+    }
 });
 
 // Sentry Error Handler
