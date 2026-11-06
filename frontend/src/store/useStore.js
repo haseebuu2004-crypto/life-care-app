@@ -339,9 +339,9 @@ const useStore = create((set, get) => ({
             throw new Error(msg);
         }
     },
-    updateStockQuantity: async (id, quantity) => {
+    updateStockQuantity: async (id, quantity, options = {}) => {
         try {
-            const res = await api.patch(`/stock/${id}`, { quantity });
+            const res = await api.patch(`/stock/${id}`, { quantity }, { signal: options?.signal });
             // Update local state without full refresh for smooth UI
             set((state) => {
                 let newEntities = state.inventoryEntities.map(s => s.inventoryId === id ? { ...s, stock: quantity } : s);
@@ -351,6 +351,9 @@ const useStore = create((set, get) => ({
             get().fetchDashboardStats().catch(console.error);
             return extract(res);
         } catch (error) {
+            if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+                return;
+            }
             const msg = error.response?.data?.message || 'Failed to update stock';
             throw new Error(msg);
         }
